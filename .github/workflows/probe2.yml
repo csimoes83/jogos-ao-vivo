@@ -1,0 +1,27 @@
+name: probe2
+on:
+  workflow_dispatch:
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Fontes alternativas para jogos portugueses
+        run: |
+          UA="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
+          probe() {
+            local name="$1" url="$2" needle="$3"; shift 3
+            local out; out=$(mktemp)
+            local code; code=$(curl -sS -m 30 -L -A "$UA" "$@" -o "$out" -w "%{http_code}" "$url" 2>&1) || true
+            local size; size=$(wc -c < "$out" | tr -d ' ')
+            local hit="não"; grep -q "$needle" "$out" 2>/dev/null && hit="sim"
+            echo "$name -> http=$code bytes=$size contém('$needle')=$hit"
+            if [ "$hit" = "não" ]; then head -c 200 "$out" | tr '\n' ' '; echo; fi
+          }
+          probe "seg.fonte jogo"   "https://www.zerozero.pt/match.php?id=12361096" "Portimonense"
+          probe "Flashscore home"  "https://www.flashscore.pt/futsal/" "futsal"
+          probe "Flashscore feed"  "https://46.flashscore.ninja/46/x/feed/f_1_0_1_pt_1" "¬" -H "x-fsign: SW9D1eZo"
+          probe "Canal 11 evento"  "https://www.canal11.pt/events/6ad658572bd7b50ceb7cd063/" "canal11"
+          probe "FPF listagem"     "https://resultados.fpf.pt/" "FPF"
+          probe "RTVE Teledeporte" "https://www.rtve.es/play/videos/directo/teledeporte/" "Teledeporte"
+          probe "Sofascore"        "https://api.sofascore.com/api/v1/sport/futsal/scheduled-events/2026-10-24" "events"

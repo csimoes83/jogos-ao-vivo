@@ -1,0 +1,43 @@
+name: jogos ao vivo
+
+on:
+  schedule:
+    # UTC. Cobre 24-26/10/2026: o primeiro jogo é às 10:00Z e o último acaba por volta das 00:30Z.
+    - cron: '*/5 9-23 24-26 10 *'
+    - cron: '*/5 0-1 25-27 10 *'
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'probe = só lê (feeds + site) | dry = pede dry-run ao site | run = aplica'
+        default: 'probe'
+        type: choice
+        options: [probe, dry, run]
+      only:
+        description: 'ids de jogos (opcional, separados por vírgula)'
+        required: false
+      ignore_window:
+        description: 'ignorar a janela horária (só para testes em dry)'
+        type: boolean
+        default: false
+
+concurrency:
+  group: live
+  cancel-in-progress: false
+
+jobs:
+  live:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@v4
+      - name: Operar jogos
+        env:
+          NFP_MCP_TOKEN: ${{ secrets.NFP_MCP_TOKEN }}
+          MODE: ${{ github.event.inputs.mode || 'run' }}
+          ONLY: ${{ github.event.inputs.only }}
+          IGNORE_WINDOW: ${{ github.event.inputs.ignore_window }}
+        run: |
+          args=(--mode "$MODE")
+          [ -n "$ONLY" ] && args+=(--only "$ONLY")
+          [ "$IGNORE_WINDOW" = "true" ] && args+=(--ignore-window)
+          python3 -I live.py "${args[@]}"

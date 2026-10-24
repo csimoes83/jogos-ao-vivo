@@ -245,6 +245,9 @@ def main():
     # 2) site
     token = os.environ.get("NFP_MCP_TOKEN", "").strip()
     mcp = Mcp(token, apply=(args.mode == "run")) if token else None
+    if token:  # só a forma do segredo, nunca o valor: ajuda a distinguir «colou-se outra coisa» de «o site recusa»
+        log(f"segredo: {len(token)} caracteres, {'só letras e números' if token.isalnum() else 'com outros caracteres (espaços, | ou símbolos)'}"
+            f"{', com | (id do token à frente)' if '|' in token else ''}")
     if mcp is None:
         alerts.append("falta o segredo NFP_MCP_TOKEN: só consigo ler os feeds" if probe
                       else "falta o segredo NFP_MCP_TOKEN: não consigo escrever no site")

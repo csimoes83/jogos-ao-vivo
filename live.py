@@ -217,7 +217,7 @@ def decide(site, fs, rf, now, ko):
         if fs is not None and now >= ko + LATE_START:
             alerts.append("passaram mais de 10 min da hora e o feed ainda não mostra o arranque")
         # o jogo devia ter começado: liga já o «ao vivo» a 0-0 (o feed e a RFEF costumam atrasar-se uns minutos); só se o jogo ainda não tinha arrancado no site
-        if fs is not None and now >= ko + START_GRACE and site.get("islive") == 0 and site.get("goalhome") is None and site.get("goalaway") is None:
+        if fs is not None and now >= ko + START_GRACE and site.get("goalhome") is None and site.get("goalaway") is None:
             notes.append("arranque pela hora do jogo (o feed ainda mostra «agendado»)")
             return {"goalhome": 0, "goalaway": 0, "islive": 1}, False, alerts, notes, False
         return None, False, alerts, notes, False
@@ -547,6 +547,8 @@ def selftest():
     check("à hora do jogo (+6 s) ainda espera", (r[0], r[2]), (None, []))
     r = decide(site0, ("scheduled", None), None, t(1), ko)
     check("1 min depois da hora liga ao vivo a 0-0 (feed ainda agendado)", (r[0], len(r[2])), ({"goalhome": 0, "goalaway": 0, "islive": 1}, 0))
+    r = decide({"goalhome": None, "goalaway": None, "islive": 1}, ("scheduled", None), None, t(1), ko)
+    check("já ao vivo à mão mas sem marcador -> põe 0-0", (r[0], len(r[2])), ({"goalhome": 0, "goalaway": 0}, 0))
     r = decide({"goalhome": 0, "goalaway": 0, "islive": 1}, ("scheduled", None), None, t(2), ko)
     check("já ao vivo e o feed atrasado -> não mexe", (r[0], len(r[2])), (None, 0))
     r = decide({"goalhome": 1, "goalaway": 0, "islive": 1}, ("scheduled", None), None, t(3), ko)

@@ -33,6 +33,7 @@ UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
 PRE = dt.timedelta(minutes=15)          # começa a vigiar um jogo 15 min antes da hora
 POST = dt.timedelta(hours=4)            # deixa de o vigiar 4h depois da hora (acaba antes: um jogo fechado sai logo da vigilância)
 LATE_START = dt.timedelta(minutes=10)   # alerta se 10 min depois da hora o feed ainda não mostra arranque
+START_GRACE = dt.timedelta(seconds=30)  # à hora do jogo (+30 s) liga o «ao vivo» a 0-0 mesmo que o feed ainda diga «agendado»
 PREFILTER = dt.timedelta(hours=12)      # só pergunta ao site por jogos perto da hora prevista
 
 
@@ -173,6 +174,10 @@ def decide(site, fs, rf, now, ko):
     if status in (None, "scheduled"):
         if fs is not None and now >= ko + LATE_START:
             alerts.append("passaram mais de 10 min da hora e o feed ainda não mostra o arranque")
+        # o jogo devia ter começado: liga já o «ao vivo» a 0-0 (o feed e a RFEF costumam atrasar-se uns minutos); só se o jogo ainda não tinha arrancado no site
+        if fs is not None and now >= ko + START_GRACE and site.get("islive") == 0 and site.get("goalhome") is None and site.get("goalaway") is None:
+            notes.append("arranque pela hora do jogo (o feed ainda mostra «agendado»)")
+            return {"goalhome": 0, "goalaway": 0, "islive": 1}, False, alerts, notes, False
         return None, False, alerts, notes, False
     if status == "other":
         alerts.append("estado do feed não reconhecido (adiado, cancelado ou interrompido?): não toquei no jogo")
@@ -296,7 +301,7 @@ def main():
         try:
             feed = {}
             for d in (-1, 0, 1):
-                feed.update(parse_feed(http_get(FS_FEED.format(d=d), FS_HEADERS)))
+                feed.update(parse_feed(http_get(FS_FEED.format(d=d) + f"?t={int(time.time() * 1000)}", FS_HEADERS)))
         except Exception as e:  # noqa: BLE001
             alerts.append(f"feed do Flashscore indisponível: {e}")
             feed = None
@@ -422,8 +427,16 @@ def selftest():
 
     r = decide(site0, ("scheduled", None), None, t(-5), ko)
     check("antes do jogo não faz nada", (r[0], r[1], r[2]), (None, False, []))
+    r = decide(site0, ("scheduled", None), None, t(0.1), ko)
+    check("à hora do jogo (+6 s) ainda espera", (r[0], r[2]), (None, []))
+    r = decide(site0, ("scheduled", None), None, t(1), ko)
+    check("1 min depois da hora liga ao vivo a 0-0 (feed ainda agendado)", (r[0], len(r[2])), ({"goalhome": 0, "goalaway": 0, "islive": 1}, 0))
+    r = decide({"goalhome": 0, "goalaway": 0, "islive": 1}, ("scheduled", None), None, t(2), ko)
+    check("já ao vivo e o feed atrasado -> não mexe", (r[0], len(r[2])), (None, 0))
+    r = decide({"goalhome": 1, "goalaway": 0, "islive": 1}, ("scheduled", None), None, t(3), ko)
+    check("feed atrasado não regride o marcador", (r[0], len(r[2])), (None, 0))
     r = decide(site0, ("scheduled", None), None, t(12), ko)
-    check("10+ min depois sem arranque -> alerta", (r[0], len(r[2])), (None, 1))
+    check("10+ min com o feed ainda agendado -> liga e avisa", (r[0], len(r[2])), ({"goalhome": 0, "goalaway": 0, "islive": 1}, 1))
     r = decide(site0, ("live", (0, 0)), None, t(2), ko)
     check("arranque liga o ao vivo a 0-0", (r[0], r[1]), ({"goalhome": 0, "goalaway": 0, "islive": 1}, False))
     r = decide({"goalhome": 0, "goalaway": 0, "islive": 1}, ("live", (1, 0)), None, t(9), ko)
@@ -474,7 +487,7 @@ def selftest():
         hhmm = t.hour * 60 + t.minute
         if "flashscore" not in url:
             raise RuntimeError("fonte inesperada " + url)
-        if url.endswith("f_11_0_1_pt_1"):
+        if "f_11_0_1_pt_1" in url:
             if hhmm < 14 * 60 + 2:
                 row = "AB÷1¬AC÷1¬"
             elif hhmm < 14 * 60 + 10:

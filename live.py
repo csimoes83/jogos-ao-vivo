@@ -18,6 +18,7 @@ import json
 import os
 import re
 import sys
+import time
 import urllib.error
 import urllib.request
 from zoneinfo import ZoneInfo
@@ -30,9 +31,13 @@ UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/124.0 Safari/537.36")
 
 PRE = dt.timedelta(minutes=15)          # começa a vigiar um jogo 15 min antes da hora
-POST = dt.timedelta(hours=5, minutes=30)  # deixa de o vigiar 5h30 depois
+POST = dt.timedelta(hours=4)            # deixa de o vigiar 4h depois da hora (acaba antes: um jogo fechado sai logo da vigilância)
 LATE_START = dt.timedelta(minutes=10)   # alerta se 10 min depois da hora o feed ainda não mostra arranque
 PREFILTER = dt.timedelta(hours=12)      # só pergunta ao site por jogos perto da hora prevista
+
+
+def NOW_FN():
+    return dt.datetime.now(dt.timezone.utc)
 
 
 class McpError(Exception):
@@ -149,7 +154,7 @@ def parse_rfef(html):
 # ----------------------------------------------------------------------------- decisão
 
 def decide(site, fs, rf, now, ko):
-    """Devolve (campos_a_alterar | None, fechar_jogo, alertas, notas). Função pura (testável)."""
+    """Devolve (campos_a_alterar | None, fechar_jogo, alertas, notas, terminado_e_gravado). Função pura (testável)."""
     alerts, notes = [], []
     status, score = fs if fs else (None, None)
     if fs is None and now >= ko:
@@ -168,15 +173,15 @@ def decide(site, fs, rf, now, ko):
     if status in (None, "scheduled"):
         if fs is not None and now >= ko + LATE_START:
             alerts.append("passaram mais de 10 min da hora e o feed ainda não mostra o arranque")
-        return None, False, alerts, notes
+        return None, False, alerts, notes, False
     if status == "other":
         alerts.append("estado do feed não reconhecido (adiado, cancelado ou interrompido?): não toquei no jogo")
-        return None, False, alerts, notes
+        return None, False, alerts, notes, False
 
     if status == "finished":
         if score is None:
             alerts.append("jogo terminado no feed mas sem resultado: não fechei")
-            return None, False, alerts, notes
+            return None, False, alerts, notes, False
         want = {"goalhome": score[0], "goalaway": score[1], "islive": 0}
     else:  # live
         h, a = score if score else (0, 0)
@@ -186,7 +191,7 @@ def decide(site, fs, rf, now, ko):
             notes.append("o feed tem menos golos que o site (golo anulado ou erro do feed)")
 
     diff = {k: v for k, v in want.items() if site.get(k) != v}
-    return (diff or None), (status == "finished" and bool(diff)), alerts, notes
+    return (diff or None), (status == "finished" and bool(diff)), alerts, notes, (status == "finished" and not diff)
 
 
 # ----------------------------------------------------------------------------- execução
@@ -214,18 +219,24 @@ def fmt_score(s):
     return "-" if not s else f"{s[0]}-{s[1]}"
 
 
+class Fatal(Exception):
+    pass
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--mode", choices=["probe", "dry", "run", "check"], default="run")
     ap.add_argument("--only", help="ids de jogos separados por vírgula")
     ap.add_argument("--ignore-window", action="store_true", help="ignora a janela horária (testes)")
+    ap.add_argument("--loop-seconds", type=int, default=0, help="repete a verificação durante N segundos (0 = uma só vez)")
+    ap.add_argument("--interval", type=int, default=20, help="segundos entre verificações (com --loop-seconds)")
     ap.add_argument("--selftest", action="store_true")
     args = ap.parse_args()
     if args.selftest:
         return selftest()
 
-    now = dt.datetime.fromisoformat(os.environ["LIVE_NOW"]).astimezone(dt.timezone.utc) if os.environ.get("LIVE_NOW") \
-        else dt.datetime.now(dt.timezone.utc)
+    fixed_now = dt.datetime.fromisoformat(os.environ["LIVE_NOW"]).astimezone(dt.timezone.utc) if os.environ.get("LIVE_NOW") else None
+    utcnow = lambda: fixed_now or NOW_FN()  # noqa: E731
     if args.mode == "check":
         token = os.environ.get("NFP_MCP_TOKEN", "").strip()
         if not token:
@@ -241,38 +252,34 @@ def main():
             print(f"{'OK  ' if t in tools else 'FALTA'} {t}")
         print(f"admin (não deve ter): {'sql_query' in tools}  | ferramentas visíveis: {len(tools)}")
         return 0 if all(t in tools for t in need) else 1
+
     only = {int(x) for x in args.only.split(",")} if args.only else None
     probe = args.mode == "probe"
+    now = utcnow()
     matches = [m for m in load_matches() if (only is None or m["id"] in only)]
     if probe or args.ignore_window:
         cand = matches
     else:
         cand = [m for m in matches if m["ko_utc"] - PREFILTER <= now <= m["ko_utc"] + PREFILTER]
     lines, alerts = [], []
+    done, last_msg, rf_cache = set(), {}, {}
+    cur = [now]
 
-    def log(msg):
-        stamp = now.astimezone(LISBON).strftime("%H:%M")
-        print(f"[{stamp}] {msg}", flush=True)
-        lines.append(msg)
+    def log(msg, key=None):
+        if key is not None:  # numa execução longa, só escreve quando a mensagem do jogo muda
+            if last_msg.get(key) == msg:
+                return
+            last_msg[key] = msg
+        print(f"[{cur[0].astimezone(LISBON):%H:%M:%S}] {msg}", flush=True)
+        lines.append(f"{cur[0].astimezone(LISBON):%H:%M:%S} {msg}")
 
     if not cand:
         log("nenhum jogo perto da hora: nada a fazer")
         return finish(args, now, lines, alerts)
 
-    # 1) feed do Flashscore (ontem, hoje, amanhã)
-    feed = {}
-    try:
-        for d in (-1, 0, 1):
-            feed.update(parse_feed(http_get(FS_FEED.format(d=d), FS_HEADERS)))
-    except Exception as e:  # noqa: BLE001
-        alerts.append(f"feed do Flashscore indisponível: {e}")
-        if not any(m.get("rfef") for m in cand):
-            return finish(args, now, lines, alerts, hard=True)
-
-    # 2) site
     token = os.environ.get("NFP_MCP_TOKEN", "").strip()
     mcp = Mcp(token, apply=(args.mode == "run")) if token else None
-    if token:  # só a forma do segredo, nunca o valor: ajuda a distinguir «colou-se outra coisa» de «o site recusa»
+    if token:  # só a forma do segredo, nunca o valor
         log(f"segredo: {len(token)} caracteres, {'só letras e números' if token.isalnum() else 'com outros caracteres (espaços, | ou símbolos)'}"
             f"{', com | (id do token à frente)' if '|' in token else ''}")
     if mcp is None:
@@ -281,53 +288,100 @@ def main():
         if not probe:
             return finish(args, now, lines, alerts, hard=True)
 
-    to_recompute = {}
-    for m in cand:
-        tag = f"{m['id']} {m['home']}–{m['away']}"
+    def one_pass(now):
+        """Uma verificação a todos os jogos em vigilância. Devolve quantos ainda ficam em vigilância."""
+        cur[0] = now
+        remaining = 0
+        feed = None
         try:
-            fs = classify_fs(feed.get(m["fs"]))
-            rf = None
-            if m.get("rfef"):
-                try:
-                    rf = parse_rfef(http_get(m["rfef"], {"Accept-Language": "es-ES,es;q=0.9"}))
-                except Exception as e:  # noqa: BLE001
-                    log(f"{tag}: RFEF indisponível ({e}); sigo só com o Flashscore")
-            site = None
-            ko = m["ko_utc"]
-            if mcp:
-                raw = mcp.get_match(m["id"])
-                site, ko = norm_site(raw), site_ko(raw)
-                if ko != m["ko_utc"]:
-                    log(f"{tag}: hora no site diferente da prevista ({raw['date']}); uso a do site")
-            if probe:
-                log(f"{tag}: feed={fs[0] if fs else 'ausente'} {fmt_score(fs[1] if fs else None)}"
-                    f" | rfef={('%s %s' % (rf['status'] or '?', fmt_score(rf['score']))) if rf else '-'}"
-                    f" | site={('islive=%s %s-%s' % (site['islive'], site['goalhome'], site['goalaway'])) if site else '?'}")
+            feed = {}
+            for d in (-1, 0, 1):
+                feed.update(parse_feed(http_get(FS_FEED.format(d=d), FS_HEADERS)))
+        except Exception as e:  # noqa: BLE001
+            alerts.append(f"feed do Flashscore indisponível: {e}")
+            feed = None
+        to_recompute = {}
+        for m in cand:
+            if m["id"] in done and not probe:
                 continue
-            if not (args.ignore_window or ko - PRE <= now <= ko + POST):
-                continue
-            fields, close, al, notes = decide(site, fs, rf, now, ko)
-            alerts += [f"{tag}: {a}" for a in al]
-            for n in notes:
-                log(f"{tag}: nota: {n}")
-            if not fields:
-                log(f"{tag}: sem alterações (feed={fs[0] if fs else 'ausente'} {fmt_score(fs[1] if fs else None)})")
-                continue
-            res = mcp.update_match(m["id"], fields)
-            log(f"{tag}: {json.dumps(fields)} -> {'APLICADO' if mcp.apply else 'dry-run'}"
-                f"{' (audit ' + str(res.get('audit_id')) + ')' if res.get('audit_id') else ''}")
-            if close:
-                to_recompute[m["comp"]] = tag
-        except (McpError, RuntimeError, KeyError, ValueError) as e:
-            alerts.append(f"{tag}: erro: {e}")
+            tag = f"{m['id']} {m['home']}–{m['away']}"
+            try:
+                if not probe and not args.ignore_window and not (m["ko_utc"] - PREFILTER <= now <= m["ko_utc"] + PREFILTER):
+                    continue
+                fs = classify_fs(feed.get(m["fs"])) if feed is not None else None
+                rf = None
+                if m.get("rfef"):
+                    hit = rf_cache.get(m["id"])
+                    if hit and (now - hit[0]).total_seconds() < 60 and not probe:
+                        rf = hit[1]
+                    else:
+                        try:
+                            rf = parse_rfef(http_get(m["rfef"], {"Accept-Language": "es-ES,es;q=0.9"}))
+                            rf_cache[m["id"]] = (now, rf)
+                        except Exception as e:  # noqa: BLE001
+                            log(f"{tag}: RFEF indisponível ({e}); sigo só com o Flashscore", key=("rf", m["id"]))
+                if feed is None and rf is None and not probe:
+                    remaining += 1
+                    continue
+                site, ko = None, m["ko_utc"]
+                if mcp:
+                    raw = mcp.get_match(m["id"])
+                    site, ko = norm_site(raw), site_ko(raw)
+                    if ko != m["ko_utc"]:
+                        log(f"{tag}: hora no site diferente da prevista ({raw['date']}); uso a do site", key=("ko", m["id"]))
+                if probe:
+                    log(f"{tag}: feed={fs[0] if fs else 'ausente'} {fmt_score(fs[1] if fs else None)}"
+                        f" | rfef={('%s %s' % (rf['status'] or '?', fmt_score(rf['score']))) if rf else '-'}"
+                        f" | site={('islive=%s %s-%s' % (site['islive'], site['goalhome'], site['goalaway'])) if site else '?'}")
+                    continue
+                if not (args.ignore_window or ko - PRE <= now <= ko + POST):
+                    continue
+                fields, close, al, notes, finished_saved = decide(site, fs, rf, now, ko)
+                alerts.extend(f"{tag}: {a}" for a in al)
+                for n in notes:
+                    log(f"{tag}: nota: {n}", key=("nota", m["id"]))
+                if finished_saved:
+                    log(f"{tag}: terminado e gravado ({fmt_score(fs[1] if fs else None)}); deixo de vigiar", key=("st", m["id"]))
+                    done.add(m["id"])
+                    continue
+                if not fields:
+                    log(f"{tag}: sem alterações (feed={fs[0] if fs else 'ausente'} {fmt_score(fs[1] if fs else None)})", key=("st", m["id"]))
+                    remaining += 1
+                    continue
+                res = mcp.update_match(m["id"], fields)
+                log(f"{tag}: {json.dumps(fields)} -> {'APLICADO' if mcp.apply else 'dry-run'}"
+                    f"{' (audit ' + str(res.get('audit_id')) + ')' if res.get('audit_id') else ''}")
+                last_msg.pop(("st", m["id"]), None)
+                if close:
+                    to_recompute[m["comp"]] = tag
+                    if mcp.apply:
+                        done.add(m["id"])
+                if m["id"] not in done:
+                    remaining += 1
+            except (McpError, RuntimeError, KeyError, ValueError) as e:
+                alerts.append(f"{tag}: erro: {e}")
+                remaining += 1
+        for comp, tag in to_recompute.items():
+            try:
+                mcp.recompute(comp)
+                log(f"classificação da competição {comp} recalculada ({tag})")
+            except McpError as e:
+                alerts.append(f"competição {comp}: não consegui recalcular a classificação ({e}); fazer à mão")
+        return remaining
 
-    for comp, tag in to_recompute.items():
-        try:
-            mcp.recompute(comp)
-            log(f"classificação da competição {comp} recalculada ({tag})")
-        except McpError as e:
-            alerts.append(f"competição {comp}: não consegui recalcular a classificação ({e}); fazer à mão")
-    return finish(args, now, lines, alerts)
+    t0 = time.monotonic()
+    passes = 0
+    while True:
+        passes += 1
+        remaining = one_pass(utcnow())
+        if probe or args.loop_seconds <= 0 or remaining == 0:
+            break
+        if time.monotonic() - t0 + args.interval >= args.loop_seconds:
+            break
+        time.sleep(args.interval)
+    if args.loop_seconds > 0:
+        log(f"{passes} verificações em {time.monotonic() - t0:.0f}s; {remaining} jogo(s) ainda em vigilância")
+    return finish(args, utcnow(), lines, list(dict.fromkeys(alerts)))
 
 
 def finish(args, now, lines, alerts, hard=False):
@@ -398,6 +452,76 @@ def selftest():
     check("18 jogos no ficheiro", len(ms), 18)
     check("hora de verão: 15:00 de Lisboa = 14:00Z a 24/10", [m for m in ms if m["id"] == 31804][0]["ko_utc"], ko)
     check("depois da mudança de hora (26/10 21:15) = 21:15Z", [m for m in ms if m["id"] == 31806][0]["ko_utc"].hour, 21)
+    # --- simulação completa: agendado -> ao vivo 0-0 -> 1-0 -> terminado 3-2, com feed e site falsos ---
+    g = globals()
+    saved = {k: g[k] for k in ("http_get", "Mcp", "NOW_FN")}
+    saved_sleep, saved_argv, saved_tok = time.sleep, sys.argv, os.environ.get("NFP_MCP_TOKEN")
+    clock = {"t": dt.datetime(2026, 10, 24, 13, 50, tzinfo=dt.timezone.utc)}  # 14:50 de Lisboa; jogo às 15:00 (14:00Z)
+    site = {"goalhome": None, "goalaway": None, "islive": 0}
+    calls = []
+
+    def fake_now():
+        t = clock["t"]
+        clock["t"] = t + dt.timedelta(seconds=20)
+        return t
+
+    def fake_get(url, headers=None, tries=2, timeout=20):
+        t = clock["t"]
+        hhmm = t.hour * 60 + t.minute
+        if "flashscore" not in url:
+            raise RuntimeError("fonte inesperada " + url)
+        if url.endswith("f_11_0_1_pt_1"):
+            if hhmm < 14 * 60 + 2:
+                row = "AB÷1¬AC÷1¬"
+            elif hhmm < 14 * 60 + 10:
+                row = "AB÷2¬AC÷12¬AG÷0¬AH÷0¬"
+            elif hhmm < 14 * 60 + 25:
+                row = "AB÷2¬AC÷13¬AG÷1¬AH÷0¬"
+            else:
+                row = "AB÷3¬AC÷3¬AG÷3¬AH÷2¬"
+            return "SA÷11¬~ZA÷PORTUGAL: Liga Placard¬~AA÷QuI0zEK0¬" + row + "~"
+        return "SA÷11¬~"
+
+    class FakeMcp:
+        def __init__(self, token, apply):
+            self.apply = apply
+
+        def get_match(self, mid):
+            return {"date": "2026-10-24 15:00:00", **site}
+
+        def update_match(self, mid, fields):
+            calls.append(("update", dict(fields)))
+            site.update(fields)
+            return {"audit_id": 1}
+
+        def recompute(self, comp):
+            calls.append(("recompute", comp))
+
+    try:
+        g["http_get"], g["Mcp"], g["NOW_FN"] = fake_get, FakeMcp, fake_now
+        time.sleep = lambda s_: None
+        os.environ["NFP_MCP_TOKEN"] = "x" * 48
+        sys.argv = ["live.py", "--mode", "run", "--only", "31804", "--loop-seconds", "7200", "--interval", "20"]
+        import io
+        import contextlib
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = main()
+    finally:
+        g.update(saved)
+        time.sleep, sys.argv = saved_sleep, saved_argv
+        if saved_tok is None:
+            os.environ.pop("NFP_MCP_TOKEN", None)
+        else:
+            os.environ["NFP_MCP_TOKEN"] = saved_tok
+    check("simulação: escritas por ordem", calls, [
+        ("update", {"goalhome": 0, "goalaway": 0, "islive": 1}),
+        ("update", {"goalhome": 1}),
+        ("update", {"goalhome": 3, "goalaway": 2, "islive": 0}),
+        ("recompute", 1213),
+    ])
+    check("simulação: estado final no site", site, {"goalhome": 3, "goalaway": 2, "islive": 0})
+    check("simulação: termina sozinha, sem alertas", (rc, "0 jogo(s) ainda em vigilância" in buf.getvalue()), (0, True))
     print("\nTUDO OK" if ok else "\nHÁ FALHAS")
     return 0 if ok else 1
 

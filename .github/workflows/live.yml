@@ -2,9 +2,12 @@ name: jogos ao vivo
 
 on:
   schedule:
-    # UTC. Cobre 24-26/10/2026: o primeiro jogo é às 10:00Z e o último acaba por volta das 00:30Z.
-    - cron: '*/5 9-23 24-26 10 *'
-    - cron: '*/5 0-1 25-27 10 *'
+    # UTC. Cada execução vigia os jogos de 20 em 20 segundos durante ~5,5 min (o GitHub não agenda abaixo de 5 min).
+    # Só nas horas em que há jogos: 24/10 (primeiro às 10:00Z), 25/10 (a partir das 12:00Z; já em hora de inverno), 26/10 (21:15Z).
+    - cron: '*/5 9-23 24 10 *'
+    - cron: '*/5 11-21 25 10 *'
+    - cron: '*/5 21-23 26 10 *'
+    - cron: '*/5 0 27 10 *'
   workflow_dispatch:
     inputs:
       mode:
@@ -19,7 +22,11 @@ on:
         description: 'ignorar a janela horária (só para testes em dry)'
         type: boolean
         default: false
+      loop_seconds:
+        description: 'repetir a verificação durante N segundos (vazio = uma só vez)'
+        required: false
 
+# uma execução de cada vez: a seguinte espera (e só fica uma à espera), por isso a vigilância é contínua e sem escritas em duplicado
 concurrency:
   group: live
   cancel-in-progress: false
@@ -27,7 +34,7 @@ concurrency:
 jobs:
   live:
     runs-on: ubuntu-latest
-    timeout-minutes: 4
+    timeout-minutes: 9
     steps:
       - uses: actions/checkout@v4
       - name: Operar jogos
@@ -36,8 +43,10 @@ jobs:
           MODE: ${{ github.event.inputs.mode || 'run' }}
           ONLY: ${{ github.event.inputs.only }}
           IGNORE_WINDOW: ${{ github.event.inputs.ignore_window }}
+          LOOP: ${{ github.event_name == 'schedule' && '330' || github.event.inputs.loop_seconds }}
         run: |
-          args=(--mode "$MODE")
+          args=(--mode "$MODE" --interval 20)
           [ -n "$ONLY" ] && args+=(--only "$ONLY")
           [ "$IGNORE_WINDOW" = "true" ] && args+=(--ignore-window)
+          [ -n "$LOOP" ] && args+=(--loop-seconds "$LOOP")
           python3 -I live.py "${args[@]}"

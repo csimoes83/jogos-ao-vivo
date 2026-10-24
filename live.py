@@ -10,7 +10,7 @@ Corre de 5 em 5 minutos num GitHub Action (sem depender de nenhum computador lig
 Só escreve no site pelo MCP (update_match, recompute_standings) e é idempotente: se o site já está
 como o feed diz, não faz nada. Nunca fecha um jogo sem resultado conhecido.
 
-Modos:  --mode probe  (só lê, nunca escreve)   --mode dry  (pede ao site um dry-run)   --mode run  (aplica)
+Modos:  --mode check  (só confirma que o token tem as permissões certas)   --mode probe  (só lê, nunca escreve)   --mode dry  (pede ao site um dry-run)   --mode run  (aplica)
 """
 import argparse
 import datetime as dt
@@ -78,6 +78,18 @@ class Mcp:
         if res.get("isError"):
             raise McpError(f"{name}: {text[:300]}")
         return json.loads(text)
+
+    def list_tools(self):
+        """tools/list: as ferramentas que ESTE token pode usar (mostra a permissão sem escrever nada)."""
+        body = json.dumps({"jsonrpc": "2.0", "id": 0, "method": "tools/list"}).encode()
+        req = urllib.request.Request(MCP_URL, data=body, method="POST", headers={
+            "Content-Type": "application/json", "Accept": "application/json",
+            "Authorization": f"Bearer {self.token}", "User-Agent": UA})
+        try:
+            with urllib.request.urlopen(req, timeout=60) as r:
+                return [t["name"] for t in json.loads(r.read().decode())["result"]["tools"]]
+        except urllib.error.HTTPError as e:
+            raise McpError(f"HTTP {e.code} em tools/list: {e.read().decode('utf-8', 'replace')[:200]}")
 
     def get_match(self, mid):
         return self.call("get_match", {"id": mid})["match"]
@@ -204,7 +216,7 @@ def fmt_score(s):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--mode", choices=["probe", "dry", "run"], default="run")
+    ap.add_argument("--mode", choices=["probe", "dry", "run", "check"], default="run")
     ap.add_argument("--only", help="ids de jogos separados por vírgula")
     ap.add_argument("--ignore-window", action="store_true", help="ignora a janela horária (testes)")
     ap.add_argument("--selftest", action="store_true")
@@ -214,6 +226,21 @@ def main():
 
     now = dt.datetime.fromisoformat(os.environ["LIVE_NOW"]).astimezone(dt.timezone.utc) if os.environ.get("LIVE_NOW") \
         else dt.datetime.now(dt.timezone.utc)
+    if args.mode == "check":
+        token = os.environ.get("NFP_MCP_TOKEN", "").strip()
+        if not token:
+            print("::warning::falta o segredo NFP_MCP_TOKEN")
+            return 1
+        try:
+            tools = Mcp(token, apply=False).list_tools()
+        except McpError as e:
+            print(f"::warning::{e}")
+            return 1
+        need = ["get_match", "update_match", "recompute_standings"]
+        for t in need:
+            print(f"{'OK  ' if t in tools else 'FALTA'} {t}")
+        print(f"admin (não deve ter): {'sql_query' in tools}  | ferramentas visíveis: {len(tools)}")
+        return 0 if all(t in tools for t in need) else 1
     only = {int(x) for x in args.only.split(",")} if args.only else None
     probe = args.mode == "probe"
     matches = [m for m in load_matches() if (only is None or m["id"] in only)]

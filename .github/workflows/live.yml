@@ -8,10 +8,10 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: 'probe = só lê (feeds + site) | dry = pede dry-run ao site | run = aplica'
+        description: 'check = confirma permissões do token | probe = só lê (feeds + site) | dry = pede dry-run ao site | run = aplica'
         default: 'probe'
         type: choice
-        options: [probe, dry, run]
+        options: [probe, check, dry, run]
       only:
         description: 'ids de jogos (opcional, separados por vírgula)'
         required: false

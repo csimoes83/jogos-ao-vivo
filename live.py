@@ -35,6 +35,7 @@ POST = dt.timedelta(hours=4)            # deixa de o vigiar 4h depois da hora (a
 LATE_START = dt.timedelta(minutes=10)   # alerta se 10 min depois da hora o feed ainda não mostra arranque
 START_GRACE = dt.timedelta(seconds=30)  # à hora do jogo (+30 s) liga o «ao vivo» a 0-0 mesmo que o feed ainda diga «agendado»
 FS_INC = "https://global.flashscore.ninja/2/x/feed/df_sui_1_{mid}"
+FS_LI = "https://global.flashscore.ninja/2/x/feed/df_li_1_{mid}"
 # campos denormalizados dos eventos (gc_match_events) por competição: season_id, escalao_id, main_competition, main_competition_type
 EVENT_META = {
     1213: {"season_id": 42, "escalao_id": 1, "main_competition": 26, "main_competition_type": 1},   # Liga Placard
@@ -353,6 +354,126 @@ def sync_goals(mcp, m, raw, rf, caches, log, alerts):
     return written
 
 
+def parse_fs_lineups(raw):
+    """df_li do Flashscore -> {'home': [jogador], 'away': [jogador]}; jogador = {name, last, num, starter, inc: [(minuto, tipo)]}.
+    tipo: 'Goal' | 'Yellow Card' | 'Red Card' | 'Own Goal' ... (como o Flashscore escreve)."""
+    out = {"home": [], "away": []}
+    side, role = None, "other"
+    for part in raw.split("~"):
+        items = [it.split("÷", 1) for it in part.split("¬") if "÷" in it]
+        if not items:
+            continue
+        for k, v in items:
+            if k == "LB":
+                role = "starters" if v.lower().startswith("start") else ("subs" if v.lower().startswith("sub") else "other")
+            elif k == "LC":
+                side = "home" if v == "1" else "away"
+        if not any(k == "LP" for k, _ in items) or side is None or role == "other":
+            continue
+        pl = {"name": "", "last": "", "num": None, "starter": role == "starters", "inc": []}
+        cur = None
+        for k, v in items:
+            if k == "LI":
+                pl["name"] = v
+            elif k == "LN":
+                pl["last"] = v
+            elif k == "LJ":
+                pl["num"] = _int(v)
+            elif k == "LII":
+                cur = {"min": None, "kind": ""}
+                pl["inc"].append(cur)
+            elif k == "LIT" and cur is not None:
+                mm = re.match(r"(\d+)", v)
+                cur["min"] = int(mm.group(1)) if mm else None
+            elif k == "LIN" and cur is not None:
+                cur["kind"] = v
+        if pl["name"]:
+            out[side].append(pl)
+    return out
+
+
+FS_EVENT = {"Goal": 6, "Yellow Card": 3, "Red Card": 5, "Own Goal": 9}
+
+
+def resolve_fs_player(pl, squad):
+    """squad: [(person_id, nome normalizado, camisola)]. Só devolve se houver certeza: nome único no plantel, ou camisola única
+    com o apelido dentro do nome do site; se o nome e a camisola apontarem para pessoas diferentes, devolve None."""
+    by_name = match_player(pl["name"], [(i, n) for i, n, _ in squad])
+    by_num = None
+    if pl.get("num"):
+        c = [i for i, _, nu in squad if nu == pl["num"]]
+        if len(c) == 1:
+            last = norm_name(pl.get("last") or "").split()
+            nm = next(n for i, n, _ in squad if i == c[0]).split()
+            if last and all(w in nm for w in last):
+                by_num = c[0]
+    if by_name and by_num and by_name != by_num:
+        return None
+    return by_name or by_num
+
+
+def sync_fs_sheet(mcp, m, raw, lineup, caches, log, alerts, goals_cards=True):
+    """Alinhamentos (convocados + cinco inicial) e, nos jogos sem RFEF, golos e cartões, a partir do df_li do Flashscore.
+    Só acrescenta o que falta (nunca apaga) e só para jogadores ligados com certeza."""
+    meta = EVENT_META.get(m["comp"])
+    if not meta:
+        alerts.append(f"{m['id']}: competição {m['comp']} sem campos de época configurados; ficha não registada")
+        return 0
+    have_rows = mcp.rows("match_event", {"match_id": m["id"]}, ["person_id", "event_id", "time"], limit=100)
+    have = {(r["person_id"], r["event_id"], r["time"]) for r in have_rows}
+    have_n = {}   # quantos golos/cartões de cada tipo cada pessoa já tem (venham de onde vierem, mesmo com outro minuto)
+    for r in have_rows:
+        have_n[(r["person_id"], r["event_id"])] = have_n.get((r["person_id"], r["event_id"]), 0) + 1
+    written = 0
+    for side in ("home", "away"):
+        team = raw["gcteamhome_id"] if side == "home" else raw["gcteamaway_id"]
+        if team not in caches["squad3"]:
+            sq = mcp.rows("squad", {"gcteam_id": team, "season_id": meta["season_id"]}, ["person_id", "number"])
+            ids = sorted({r["person_id"] for r in sq})
+            names = {r["id"]: norm_name(r["name"]) for r in mcp.rows("person", {"id": ids}, ["id", "name"])} if ids else {}
+            nums = {}
+            for r in sq:
+                nums.setdefault(r["person_id"], r.get("number") or 0)
+            caches["squad3"][team] = [(i, names.get(i, ""), nums.get(i, 0)) for i in ids if names.get(i)]
+        squad = caches["squad3"][team]
+        unresolved = []
+        for pl in lineup[side]:
+            key = (side, pl["name"], pl["num"])
+            if key not in caches["fsplayer"]:
+                caches["fsplayer"][key] = resolve_fs_player(pl, squad)
+            pid = caches["fsplayer"][key]
+            if pid is None:
+                unresolved.append(f"{pl['name']} ({pl['num']})")
+                continue
+            wanted = [(1, 0)] + ([(2, 0)] if pl["starter"] else [])
+            if goals_cards:
+                per_ev = {}
+                for inc in pl["inc"]:
+                    ev = FS_EVENT.get(inc["kind"])
+                    if ev is None:
+                        alerts.append(f"{m['id']}: evento «{inc['kind']}» de {pl['name']} aos {inc['min']}' não registado (fazer à mão)")
+                    elif inc["min"] is not None:
+                        per_ev.setdefault(ev, []).append(inc["min"])
+                for ev, mins in per_ev.items():
+                    if have_n.get((pid, ev), 0) >= len(mins):   # a ficha já tem tantos como o Flashscore: não mexo (o minuto pode vir de fonte melhor)
+                        continue
+                    wanted += [(ev, mn) for mn in mins if (pid, ev, mn) not in have][: len(mins) - have_n.get((pid, ev), 0)]
+            for ev, minute in wanted:
+                if (pid, ev, minute) in have:
+                    continue
+                fields = {"competition_id": m["comp"], **meta, "match_id": m["id"], "team_id": team, "person_id": pid, "event_id": ev, "time": minute}
+                res = mcp.save_event(fields)
+                have.add((pid, ev, minute))
+                have_n[(pid, ev)] = have_n.get((pid, ev), 0) + 1
+                written += 1
+                if ev != 1:
+                    log(f"{m['id']}: {['', '', 'cinco inicial', 'amarelo', '', 'vermelho', 'golo', '', '', 'auto-golo'][ev]} {pl['name']} {minute}' ({side}) -> "
+                        f"{'registado' if mcp.apply else 'dry-run'}{' (audit ' + str(res.get('audit_id')) + ')' if res.get('audit_id') else ''}")
+        if unresolved:
+            alerts.append(f"{m['id']}: {len(unresolved)} jogador(es) do Flashscore sem ligação certa no plantel ({', '.join(unresolved[:6])}): fazer à mão")
+    return written
+
+
 def idle_wait(matches, done, now, horizon=dt.timedelta(hours=3)):
     """Segundos até abrir a próxima janela de vigilância, se for dentro do horizonte; senão None."""
     opens = [m["ko_utc"] - PRE for m in matches if m["id"] not in done and m["ko_utc"] - PRE > now]
@@ -406,7 +527,7 @@ def main():
         cand = [m for m in matches if m["ko_utc"] - PREFILTER <= now <= m["ko_utc"] + PREFILTER]
     lines, alerts = [], []
     done, last_msg, rf_cache = set(), {}, {}
-    caches = {"meta": {}, "person": {}, "squad": {}}
+    caches = {"meta": {}, "person": {}, "squad": {}, "squad3": {}, "fsplayer": {}}
     cur = [now]
 
     def log(msg, key=None):
@@ -480,12 +601,16 @@ def main():
                     continue
                 if not (args.ignore_window or ko - PRE <= now <= ko + POST):
                     continue
-                if not m.get("rfef") and mcp and raw and fs and fs[0] in ("live", "finished"):
-                    try:  # jogos de Portugal: golos (minuto + marcador) do feed de incidências do Flashscore
-                        inc = parse_fs_incidents(http_get(FS_INC.format(mid=m["fs"]) + f"?t={int(time.time() * 1000)}", FS_HEADERS))
-                        sync_goals(mcp, m, raw, {"events": inc}, caches, lambda msg, key=None: log(msg, key=key), alerts)
+                if mcp and raw and fs and fs[0] in ("live", "finished"):
+                    try:  # ficha do Flashscore: alinhamentos (todos os jogos) e, em Portugal, golos e cartões
+                        lin = parse_fs_lineups(http_get(FS_LI.format(mid=m["fs"]) + f"?t={int(time.time() * 1000)}", FS_HEADERS))
+                        if lin["home"] or lin["away"]:
+                            sync_fs_sheet(mcp, m, raw, lin, caches, lambda msg, key=None: log(msg, key=key), alerts, goals_cards=not m.get("rfef"))
+                        elif not m.get("rfef"):  # sem alinhamentos publicados: golos pelo feed de incidências
+                            inc = parse_fs_incidents(http_get(FS_INC.format(mid=m["fs"]) + f"?t={int(time.time() * 1000)}", FS_HEADERS))
+                            sync_goals(mcp, m, raw, {"events": inc}, caches, lambda msg, key=None: log(msg, key=key), alerts)
                     except (McpError, RuntimeError, KeyError, ValueError) as e:
-                        alerts.append(f"{tag}: erro a registar golos (Flashscore): {e}")
+                        alerts.append(f"{tag}: erro a registar a ficha (Flashscore): {e}")
                 if rf and rf.get("events") and mcp and raw and (site["islive"] == 1 or (fs and fs[0] in ("live", "finished"))):
                     try:
                         sync_goals(mcp, m, raw, rf, caches, lambda msg, key=None: log(msg, key=key), alerts)
@@ -728,6 +853,64 @@ def selftest():
     check("sem acentos: «Bebe» -> Bebé", match_player("Bebe", sq), 3)
     check("«Gonzalez S.» -> Sérgio González", match_player("Gonzalez S.", sq), 4)
     check("desconhecido -> None", match_player("Xavier M.", sq), None)
+    # --- ficha do Flashscore (df_li): alinhamentos, golos e cartões (amostra real, Portimonense–Rio Ave 24/10/2026) ---
+    fs_li_sample = "LB÷Starting Lineups¬LGT÷1¬LC÷1¬~LH÷0¬LP÷67v7PzK9¬LI÷de Andrade Pinheiro J. Q.¬LR÷(G)¬LS÷Goalkeeper¬LR÷(C)¬LS÷Captain¬NU÷¬LN÷de Andrade Pinheiro¬LJ÷2¬LO÷39¬LQ÷Brazil¬LK÷15¬LG÷1¬~LH÷1¬LP÷AsUPCT0c¬LI÷Dzyalochynsky A.¬NU÷¬LN÷Dzyalochynsky¬LJ÷17¬LO÷155¬LQ÷Portugal¬LK÷1¬LG÷1¬LII÷3¬LIT÷38'¬LIN÷Goal¬~LH÷2¬LP÷YNZw2wB9¬LI÷Gui Marques¬NU÷¬LN÷Gui Marques¬LJ÷51¬LO÷39¬LQ÷Brazil¬LK÷1¬LG÷1¬LII÷3¬LIT÷29'¬LIN÷Goal¬~LH÷3¬LP÷4EjCGzj2¬LI÷Souza A.¬NU÷¬LN÷Souza¬LJ÷33¬LO÷39¬LQ÷Brazil¬LK÷1¬LG÷1¬LII÷3¬LIT÷35'¬LIN÷Goal¬~LH÷4¬LP÷WYiBmuyM¬LI÷Vitinho¬NU÷¬LN÷Vitinho¬LJ÷94¬LO÷39¬LQ÷Brazil¬LK÷1¬LG÷1¬~LC÷2¬~LH÷0¬LP÷Umto1pk8¬LI÷Moreira¬LR÷(G)¬LS÷Goalkeeper¬NU÷¬LN÷Moreira¬LJ÷12¬LO÷155¬LQ÷Portugal¬LK÷15¬LG÷1¬~LH÷1¬LP÷d8sCOWyQ¬LI÷Bebe¬NU÷¬LN÷Godinho¬LJ÷13¬LO÷155¬LQ÷Portugal¬LK÷1¬LG÷1¬LII÷3¬LIT÷8'¬LIN÷Goal¬~LH÷2¬LP÷trdQTODd¬LI÷Castela M.¬NU÷¬LN÷Castela¬LJ÷27¬LO÷155¬LQ÷Portugal¬LK÷1¬LG÷1¬~LH÷3¬LP÷vVyfWS13¬LI÷Dorda M.¬NU÷¬LN÷Dorda¬LJ÷19¬LO÷22¬LQ÷Argentina¬LK÷1¬LG÷1¬~LH÷4¬LP÷jehrcOiK¬LI÷Rodrigues P.¬LR÷(C)¬LS÷Captain¬NU÷¬LN÷Rodrigues¬LJ÷10¬LO÷155¬LQ÷Portugal¬LK÷1¬LG÷1¬~LB÷Substitutes¬LGT÷1¬LC÷1¬~LH÷5¬LP÷SbpQx6k7¬LI÷Filipinho¬NU÷¬LN÷Filipinho¬LJ÷8¬LO÷155¬LQ÷Portugal¬LK÷2¬LG÷1¬~LH÷6¬LP÷4AhJS4FB¬LI÷Luiggi Baptista¬NU÷¬LN÷Luiggi Baptista¬LJ÷29¬LO÷39¬LQ÷Brazil¬LK÷2¬LG÷1¬LII÷3¬LIT÷25'¬LIN÷Goal¬LII÷3¬LIT÷28'¬LIN÷Goal¬~LH÷7¬LP÷jq2cQBdm¬LI÷Montanha¬NU÷¬LN÷Montanha¬LJ÷70¬LO÷39¬LQ÷Brazil¬LK÷2¬LG÷1¬~LH÷8¬LP÷IVKYc56U¬LI÷Reis T.¬NU÷¬LN÷Reis¬LJ÷10¬LO÷155¬LQ÷Portugal¬LK÷2¬LG÷1¬LII÷3¬LIT÷14'¬LIN÷Goal¬~LH÷9¬LP÷pjqqgRZm¬LI÷Rochato A.¬NU÷¬LN÷Rochato¬LJ÷9¬LO÷155¬LQ÷Portugal¬LK÷2¬LG÷1¬~LH÷10¬LP÷WbLQVXYP¬LI÷Santi¬NU÷¬LN÷Santi¬LJ÷16¬LO÷155¬LQ÷Portugal¬LK÷2¬LG÷1¬~LH÷11¬LP÷6LVgNrck¬LI÷Serra A.¬NU÷¬LN÷Serra¬LJ÷11¬LO÷155¬LQ÷Portugal¬LK÷2¬LG÷1¬~LH÷12¬LP÷zZ292sa3¬LI÷Vieira A.¬NU÷¬LN÷Vieira¬LJ÷24¬LO÷155¬LQ÷Portugal¬LK÷2¬LG÷1¬~LC÷2¬~LH÷5¬LP÷WGyHZt1q¬LI÷Angelo M.¬NU÷¬LN÷Angelo¬LJ÷14¬LO÷155¬LQ÷Portugal¬LK÷2¬LG÷1¬LII÷3¬LIT÷17'¬LIN÷Goal¬~LH÷6¬LP÷pEVSWhu7¬LI÷Cigano¬NU÷¬LN÷Sousa¬LJ÷15¬LO÷155¬LQ÷Portugal¬LK÷2¬LG÷1¬~LH÷7¬LP÷GCl0VsjB¬LI÷Dinis Ramos¬NU÷¬LN÷Dinis Ramos¬LJ÷3¬LO÷155¬LQ÷Portugal¬LK÷2¬LG÷1¬~LH÷8¬LP÷SIvjB5ft¬LI÷Freire R.¬NU÷¬LN÷Freire¬LJ÷7¬LO÷155¬LQ÷Portugal¬LK÷2¬LG÷1¬~LH÷9¬LP÷6upDiL0M¬LI÷Ramos T.¬LR÷(G)¬LS÷Goalkeeper¬NU÷¬LN÷Ramos¬LJ÷1¬LO÷155¬LQ÷Portugal¬LK÷2¬LG÷1¬~LH÷10¬LP÷lnGlJZA7¬LI÷Rodrigues G.¬NU÷¬LN÷Rodrigues¬LJ÷8¬LO÷155¬LQ÷Portugal¬LK÷2¬LG÷1¬LII÷2¬LIT÷34'¬LIN÷Red Card¬~LH÷11¬LP÷6oTVQOsK¬LI÷Sacramento T.¬LR÷(G)¬LS÷Goalkeeper¬NU÷¬LN÷Sacramento¬LJ÷33¬LO÷155¬LQ÷Portugal¬LK÷2¬LG÷1¬~LH÷12¬LP÷Oh4W6yo4¬LI÷Serginho¬NU÷¬LN÷Serginho¬LJ÷18¬LO÷155¬LQ÷Portugal¬LK÷2¬LG÷1¬~LH÷13¬LP÷COLP91yQ¬LI÷Silva F.¬NU÷¬LN÷Silva¬LJ÷4¬LO÷155¬LQ÷Portugal¬LK÷2¬LG÷1¬~A1÷9a6949c472e0532fc57e32c46f73c720¬~"
+    lin = parse_fs_lineups(fs_li_sample)
+    check("df_li: cinco inicial de cada equipa", ({s_: sum(1 for pl in lin[s_] if pl["starter"]) for s_ in lin}), {"home": 5, "away": 5})
+    luiggi = [pl for pl in lin["home"] if pl["name"] == "Luiggi Baptista"][0]
+    check("df_li: Luiggi Baptista #29 marcou aos 25' e 28' (suplente)", (luiggi["num"], luiggi["starter"], [(i["min"], i["kind"]) for i in luiggi["inc"]]),
+          (29, False, [(25, "Goal"), (28, "Goal")]))
+    check("df_li: cartão vermelho lido", [(pl["name"], i["min"]) for s_ in lin for pl in lin[s_] for i in pl["inc"] if i["kind"] == "Red Card"], [("Rodrigues G.", 34)])
+    sqh = [(101, norm_name("Tomás Reis"), 10), (102, norm_name("Luiggi Baptista"), 29), (103, norm_name("Gui Marques"), 51),
+           (104, norm_name("André Souza"), 33), (105, norm_name("Andriy Dzyalochynskyy"), 17)]
+    check("resolve: «Reis T.» -> Tomás Reis", resolve_fs_player({"name": "Reis T.", "last": "Reis", "num": 10}, sqh), 101)
+    check("resolve: «Souza A.» -> André Souza", resolve_fs_player({"name": "Souza A.", "last": "Souza", "num": 33}, sqh), 104)
+    check("resolve: grafia diferente («Dzyalochynsky» vs «Dzyalochynskyy») -> None", resolve_fs_player({"name": "Dzyalochynsky A.", "last": "Dzyalochynsky", "num": 17}, sqh), None)
+    check("resolve: nome único manda se a camisola não bate com ninguém compatível", resolve_fs_player({"name": "Reis T.", "last": "Reis", "num": 29}, sqh), 101)
+    sq_dup = [(201, norm_name("Rui Lopes"), 7), (202, norm_name("Rui Silva"), 9)]
+    check("resolve: nome e camisola apontam para pessoas diferentes -> None", resolve_fs_player({"name": "Lopes R.", "last": "Silva", "num": 9}, sq_dup), None)
+
+    class FakeSheetMcp:
+        apply = True
+
+        def __init__(self):
+            self.saved = []
+
+        def rows(self, resource, where, columns=None, limit=100):
+            if resource == "match_event":
+                return [{"person_id": 101, "event_id": 1, "time": 0}]      # Reis já convocado
+            if resource == "squad" and where["gcteam_id"] == 108:
+                return [{"person_id": 101, "number": 10}, {"person_id": 102, "number": 29}, {"person_id": 103, "number": 51}]
+            if resource == "squad":
+                return []
+            if resource == "person":
+                return [{"id": 101, "name": "Tomás Reis"}, {"id": 102, "name": "Luiggi Baptista"}, {"id": 103, "name": "Gui Marques"}]
+
+        def save_event(self, fields):
+            self.saved.append((fields["person_id"], fields["event_id"], fields["time"]))
+            return {"audit_id": 1}
+
+    fsm, al3 = FakeSheetMcp(), []
+    n3 = sync_fs_sheet(fsm, {"id": 31804, "comp": 1213}, {"gcteamhome_id": 108, "gcteamaway_id": 5}, lin,
+                       {"squad3": {}, "fsplayer": {}}, lambda msg, key=None: None, al3, goals_cards=True)
+    got = sorted(fsm.saved)
+    check("ficha: convocados, cinco e golos em falta (Reis já convocado; Gui Marques no cinco)", got,
+          sorted([(101, 6, 14), (102, 1, 0), (102, 6, 25), (102, 6, 28), (103, 1, 0), (103, 2, 0), (103, 6, 29)]))
+    check("ficha: aviso de jogadores sem ligação certa", [a for a in al3 if "sem ligação" in a] != [], True)
+    class FakeSheetMcp2(FakeSheetMcp):
+        def rows(self, resource, where, columns=None, limit=100):
+            if resource == "match_event":
+                return [{"person_id": 102, "event_id": 6, "time": 24}]   # Luiggi: 1 golo (a 24'), vindo de outra fonte
+            return FakeSheetMcp.rows(self, resource, where, columns, limit)
+    fsm3 = FakeSheetMcp2()
+    sync_fs_sheet(fsm3, {"id": 31804, "comp": 1213}, {"gcteamhome_id": 108, "gcteamaway_id": 5}, lin,
+                  {"squad3": {}, "fsplayer": {}}, lambda msg, key=None: None, [], goals_cards=True)
+    luiggi_goals = sorted(e for e in fsm3.saved if e[0] == 102 and e[1] == 6)
+    check("ficha: se já há 1 golo do jogador (outro minuto), só acrescenta o que falta (1, não 2)", len(luiggi_goals), 1)
+    fsm2 = FakeSheetMcp()
+    sync_fs_sheet(fsm2, {"id": 63457, "comp": 2758, "rfef": "x"}, {"gcteamhome_id": 108, "gcteamaway_id": 5}, lin,
+                  {"squad3": {}, "fsplayer": {}}, lambda msg, key=None: None, [], goals_cards=False)
+    check("ficha (jogo com RFEF): só alinhamentos, sem golos/cartões", sorted(e for e in fsm2.saved if e[1] not in (1, 2)), [])
     ms0 = load_matches()
     g31804 = [m for m in ms0 if m["id"] == 31804]
     check("espera até à próxima janela (75 min)", idle_wait(g31804, set(), dt.datetime(2026, 10, 24, 12, 30, tzinfo=dt.timezone.utc)), 4500.0)

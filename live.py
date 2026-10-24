@@ -548,7 +548,7 @@ def selftest():
     r = decide(site0, ("scheduled", None), None, t(1), ko)
     check("1 min depois da hora liga ao vivo a 0-0 (feed ainda agendado)", (r[0], len(r[2])), ({"goalhome": 0, "goalaway": 0, "islive": 1}, 0))
     r = decide({"goalhome": None, "goalaway": None, "islive": 1}, ("scheduled", None), None, t(1), ko)
-    check("já ao vivo à mão mas sem marcador -> põe 0-0", (r[0], len(r[2])), ({"goalhome": 0, "goalaway": 0}, 0))
+    check("já ao vivo à mão mas sem marcador -> põe 0-0", (r[0], len(r[2])), ({"goalhome": 0, "goalaway": 0, "islive": 1}, 0))
     r = decide({"goalhome": 0, "goalaway": 0, "islive": 1}, ("scheduled", None), None, t(2), ko)
     check("já ao vivo e o feed atrasado -> não mexe", (r[0], len(r[2])), (None, 0))
     r = decide({"goalhome": 1, "goalaway": 0, "islive": 1}, ("scheduled", None), None, t(3), ko)

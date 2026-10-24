@@ -269,7 +269,8 @@ def fmt_score(s):
 def sync_goals(mcp, m, raw, rf, caches, log, alerts):
     """Põe na ficha os golos (minuto + marcador) que a RFEF mostra e que ainda não estão lá. Só liga o jogador por id RFEF
     ou, na falta dele, por nome único no plantel da equipa; se houver dúvida não escreve e avisa."""
-    goals = [e for e in rf.get("events", []) if e["kind"].lower().startswith("gol")]
+    skip = {(str(a), int(b)) for a, b in m.get("skip_goals", [])}  # eventos da RFEF que se sabe estarem a mais (ex.: golo registado duas vezes)
+    goals = [e for e in rf.get("events", []) if e["kind"].lower().startswith("gol") and (e["pid"], e["minute"]) not in skip]
     if not goals:
         return 0
     for e in rf["events"]:
@@ -660,6 +661,10 @@ def selftest():
                    {"events": evs}, {"meta": {}, "person": {}, "squad": {}}, lambda msg, key=None: None, al2)
     check("golos novos registados (sem duplicar o Antonio)", (n, sorted(fm.saved)), (2, [(469, 44, 6, 6), (14363, 3603, 7, 6)]))
     check("sem alertas", al2, [])
+    fm2 = FakeSyncMcp()
+    n2 = sync_goals(fm2, {"id": 63457, "comp": 2758, "skip_goals": [["10932", 7]]}, {"gcteamhome_id": 3603, "gcteamaway_id": 44},
+                    {"events": evs}, {"meta": {}, "person": {}, "squad": {}}, lambda msg, key=None: None, [])
+    check("skip_goals ignora um golo da RFEF", (n2, sorted(fm2.saved)), (1, [(469, 44, 6, 6)]))
     ms0 = load_matches()
     g31804 = [m for m in ms0 if m["id"] == 31804]
     check("espera até à próxima janela (75 min)", idle_wait(g31804, set(), dt.datetime(2026, 10, 24, 12, 30, tzinfo=dt.timezone.utc)), 4500.0)

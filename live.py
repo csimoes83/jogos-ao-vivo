@@ -34,6 +34,13 @@ PRE = dt.timedelta(minutes=15)          # começa a vigiar um jogo 15 min antes 
 POST = dt.timedelta(hours=4)            # deixa de o vigiar 4h depois da hora (acaba antes: um jogo fechado sai logo da vigilância)
 LATE_START = dt.timedelta(minutes=10)   # alerta se 10 min depois da hora o feed ainda não mostra arranque
 START_GRACE = dt.timedelta(seconds=30)  # à hora do jogo (+30 s) liga o «ao vivo» a 0-0 mesmo que o feed ainda diga «agendado»
+FS_INC = "https://global.flashscore.ninja/2/x/feed/df_sui_1_{mid}"
+# campos denormalizados dos eventos (gc_match_events) por competição: season_id, escalao_id, main_competition, main_competition_type
+EVENT_META = {
+    1213: {"season_id": 42, "escalao_id": 1, "main_competition": 26, "main_competition_type": 1},   # Liga Placard
+    1923: {"season_id": 42, "escalao_id": 2, "main_competition": 27, "main_competition_type": 1},   # Liga Feminina Placard
+    2758: {"season_id": 42, "escalao_id": 1, "main_competition": 33, "main_competition_type": 1},   # Liga Prime Futsal
+}
 PREFILTER = dt.timedelta(hours=12)      # só pergunta ao site por jogos perto da hora prevista
 
 
@@ -191,7 +198,42 @@ def parse_rfef(html):
 
 def norm_name(x):
     import unicodedata
-    return " ".join("".join(c for c in unicodedata.normalize("NFD", x.lower()) if unicodedata.category(c) != "Mn").replace("-", " ").split())
+    t = "".join(c for c in unicodedata.normalize("NFD", x.lower()) if unicodedata.category(c) != "Mn")
+    return " ".join(re.sub(r"[^a-z0-9]+", " ", t).split())
+
+
+def match_player(name, squad):
+    """name: como o Flashscore escreve («Antonio», «Wanderson Silva», «Lopes J.»); squad: [(person_id, nome normalizado)].
+    Devolve o person_id só se houver UM candidato: as palavras do nome têm de estar no nome do site e cada inicial
+    tem de abrir outra palavra. Em caso de dúvida devolve None."""
+    toks = norm_name(re.sub(r"\(.*?\)", "", name)).split()
+    words = [t for t in toks if len(t) > 1]
+    inits = [t for t in toks if len(t) == 1]
+    if not words:
+        return None
+    hits = []
+    for pid, pn in squad:
+        pt = pn.split()
+        if all(w in pt for w in words) and all(any(x.startswith(i) for x in pt if x not in words) for i in inits):
+            hits.append(pid)
+    return hits[0] if len(hits) == 1 else None
+
+
+def parse_fs_incidents(raw):
+    """df_sui do Flashscore: blocos '~III÷id¬IA÷lado¬IB÷minuto'¬IF÷nome¬IK÷tipo¬'. -> eventos no mesmo formato da RFEF."""
+    out = []
+    for part in raw.split("~"):
+        kv = {}
+        for item in part.split("¬"):
+            if "÷" in item:
+                k, v = item.split("÷", 1)
+                kv.setdefault(k, v)
+        if "III" in kv and kv.get("IK") == "Goal" and kv.get("IF"):
+            mm = re.match(r"(\d+)", kv.get("IB", ""))
+            if mm and kv.get("IA") in ("1", "2"):
+                out.append({"minute": int(mm.group(1)), "side": "home" if kv["IA"] == "1" else "away", "kind": "Gol",
+                            "pid": "fs:" + kv["IF"], "name": kv["IF"]})
+    return out
 
 
 # ----------------------------------------------------------------------------- decisão
@@ -277,12 +319,9 @@ def sync_goals(mcp, m, raw, rf, caches, log, alerts):
         if "propia" in e["kind"].lower():
             alerts.append(f"{m['id']}: auto-golo de {e['name']} aos {e['minute']}' não registado automaticamente (fazer à mão)")
     comp = m["comp"]
-    if comp not in caches["meta"]:
-        r = mcp.rows("match_event", {"competition_id": comp}, ["season_id", "escalao_id", "main_competition", "main_competition_type"], limit=1)
-        caches["meta"][comp] = r[0] if r else None
-    meta = caches["meta"][comp]
+    meta = EVENT_META.get(comp)
     if not meta:
-        alerts.append(f"{m['id']}: sem eventos anteriores na competição {comp}: não sei os campos da época; golos não registados")
+        alerts.append(f"{m['id']}: competição {comp} sem campos de época configurados; golos não registados")
         return 0
     have = {(r["person_id"], r["time"]) for r in mcp.rows("match_event", {"match_id": m["id"], "event_id": 6}, ["person_id", "time"])}
     written = 0
@@ -290,20 +329,18 @@ def sync_goals(mcp, m, raw, rf, caches, log, alerts):
         team = raw["gcteamhome_id"] if e["side"] == "home" else raw["gcteamaway_id"]
         key = (e["pid"], team)
         if key not in caches["person"]:
-            pid = mcp.person_by_external("rfef", e["pid"])
+            pid = None if e["pid"].startswith("fs:") else mcp.person_by_external("rfef", e["pid"])
             if pid is None:  # nome único no plantel desta equipa
                 if team not in caches["squad"]:
                     sq = mcp.rows("squad", {"gcteam_id": team, "season_id": meta["season_id"]}, ["person_id"])
                     ids = sorted({r["person_id"] for r in sq})
                     names = mcp.rows("person", {"id": ids}, ["id", "name"]) if ids else []
                     caches["squad"][team] = [(r["id"], norm_name(r["name"])) for r in names]
-                tok = set(norm_name(e["name"]).split())
-                hits = [i for i, n in caches["squad"][team] if tok and tok <= set(n.split())]
-                pid = hits[0] if len(hits) == 1 else None
+                pid = match_player(e["name"], caches["squad"][team])
             caches["person"][key] = pid
         pid = caches["person"][key]
         if pid is None:
-            alerts.append(f"{m['id']}: golo de {e['name']} aos {e['minute']}' (RFEF {e['pid']}) sem jogador certo no site: não registei")
+            alerts.append(f"{m['id']}: golo de {e['name']} aos {e['minute']}' sem jogador certo no site ({e['pid']}): não registei")
             continue
         if (pid, e["minute"]) in have:
             continue
@@ -443,6 +480,12 @@ def main():
                     continue
                 if not (args.ignore_window or ko - PRE <= now <= ko + POST):
                     continue
+                if not m.get("rfef") and mcp and raw and fs and fs[0] in ("live", "finished"):
+                    try:  # jogos de Portugal: golos (minuto + marcador) do feed de incidências do Flashscore
+                        inc = parse_fs_incidents(http_get(FS_INC.format(mid=m["fs"]) + f"?t={int(time.time() * 1000)}", FS_HEADERS))
+                        sync_goals(mcp, m, raw, {"events": inc}, caches, lambda msg, key=None: log(msg, key=key), alerts)
+                    except (McpError, RuntimeError, KeyError, ValueError) as e:
+                        alerts.append(f"{tag}: erro a registar golos (Flashscore): {e}")
                 if rf and rf.get("events") and mcp and raw and (site["islive"] == 1 or (fs and fs[0] in ("live", "finished"))):
                     try:
                         sync_goals(mcp, m, raw, rf, caches, lambda msg, key=None: log(msg, key=key), alerts)
@@ -667,6 +710,24 @@ def selftest():
     n2 = sync_goals(fm2, {"id": 63457, "comp": 2758, "skip_goals": [["10932", 7]]}, {"gcteamhome_id": 3603, "gcteamaway_id": 44},
                     {"events": evs}, {"meta": {}, "person": {}, "squad": {}}, lambda msg, key=None: None, [])
     check("skip_goals ignora um golo da RFEF", (n2, sorted(fm2.saved)), (1, [(469, 44, 6, 6)]))
+    # --- golos de Portugal pelo feed de incidências do Flashscore (amostra real, El Ejido–Barça 24/10/2026) ---
+    fs_sample = """~III÷nkImgrSp¬IA÷2¬IB÷3'¬IE÷3¬IF÷Antonio¬IU÷¬ICT÷¬IK÷Goal¬IM÷C0z5m3DU¬
+~III÷4OZxfYcs¬IA÷1¬IB÷7'¬IE÷3¬IF÷Wanderson Silva¬IU÷¬ICT÷¬IK÷Goal¬IM÷tnINfsPq¬
+~III÷M1i8Z4BD¬IA÷2¬IB÷10'¬IE÷3¬IF÷Gonzalez S.¬IU÷¬ICT÷¬IK÷Goal¬IM÷byqhbehC¬
+~III÷0zPsRNBt¬IA÷1¬IB÷12'¬IE÷1¬IF÷Rosa N.¬IU÷¬ICT÷¬IK÷Yellow Card¬IM÷655Mdw5m¬
+~III÷WdnP0sro¬IA÷1¬IB÷32'¬IE÷3¬IF÷Juanico¬IU÷¬ICT÷¬IK÷Goal¬IM÷OCOwOKs0¬
+~III÷lG3f1O1C¬IA÷2¬IB÷33'¬IE÷3¬IF÷Gonzalez S.¬IU÷¬ICT÷¬IK÷Goal¬IM÷byqhbehC¬"""
+    fe = parse_fs_incidents(fs_sample)
+    check("Flashscore: só golos (sem cartões), com lado e minuto", [(e["minute"], e["side"], e["name"]) for e in fe],
+          [(3, "away", "Antonio"), (7, "home", "Wanderson Silva"), (10, "away", "Gonzalez S."), (32, "home", "Juanico"), (33, "away", "Gonzalez S.")])
+    sq = [(1, norm_name("João Lopes \"Cigano\"")), (2, norm_name("Pedro Lopes")), (3, norm_name("Bebé")), (4, norm_name("Sérgio González")),
+          (5, norm_name("Rúben Freire")), (6, norm_name("Rui Freire"))]
+    check("nome com inicial: «Lopes J.» -> João Lopes", match_player("Lopes J.", sq), 1)
+    check("nome com inicial ambíguo: «Freire R.» -> None", match_player("Freire R.", sq), None)
+    check("nome só com apelido ambíguo: «Lopes» -> None", match_player("Lopes", sq), None)
+    check("sem acentos: «Bebe» -> Bebé", match_player("Bebe", sq), 3)
+    check("«Gonzalez S.» -> Sérgio González", match_player("Gonzalez S.", sq), 4)
+    check("desconhecido -> None", match_player("Xavier M.", sq), None)
     ms0 = load_matches()
     g31804 = [m for m in ms0 if m["id"] == 31804]
     check("espera até à próxima janela (75 min)", idle_wait(g31804, set(), dt.datetime(2026, 10, 24, 12, 30, tzinfo=dt.timezone.utc)), 4500.0)

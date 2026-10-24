@@ -1,23 +1,167 @@
 {
   "_nota": "ko = hora de Lisboa (a do site). fs = id do jogo no feed de futsal do Flashscore. rfef = página oficial (só Espanha, confirmação).",
   "matches": [
-    {"id": 63457, "ko": "2026-10-24T11:00", "home": "Sur Seeds El Ejido Futsal", "away": "FC Barcelona", "comp": 2758, "fs": "OK5ev3Qc", "rfef": "https://futsal.rfef.es/partido/inagroup-el-ejido-futsal/bar%C3%A7a/103/2027"},
-    {"id": 31804, "ko": "2026-10-24T15:00", "home": "Portimonense SC", "away": "Rio Ave FC", "comp": 1213, "fs": "QuI0zEK0"},
-    {"id": 63458, "ko": "2026-10-24T15:30", "home": "Osasuna Magna Xota FS", "away": "Wanapix AD Sala 10 Zaragoza", "comp": 2758, "fs": "GKVYzky3", "rfef": "https://futsal.rfef.es/partido/magna-xota-fs/wanapix-ad-sala-10/102/2027"},
-    {"id": 63459, "ko": "2026-10-24T17:30", "home": "Inter FS", "away": "Viña Albali Valdepeñas", "comp": 2758, "fs": "rk2BzLPM", "rfef": "https://futsal.rfef.es/partido/movistar-inter/vi%C3%B1a-albali-valdepe%C3%B1as/32/2027"},
-    {"id": 31802, "ko": "2026-10-24T18:00", "home": "SCFZ/Zêzerovo", "away": "Eléctrico", "comp": 1213, "fs": "nXNMsdSQ"},
-    {"id": 57984, "ko": "2026-10-24T18:00", "home": "Feijó", "away": "Maia", "comp": 1923, "fs": "nLotpjPh"},
-    {"id": 57985, "ko": "2026-10-24T18:00", "home": "Santa Luzia", "away": "GD Árvore", "comp": 1923, "fs": "KYqlrUg5"},
-    {"id": 57986, "ko": "2026-10-24T19:00", "home": "SL Benfica", "away": "Novasemente", "comp": 1923, "fs": "Io5GTUvC"},
-    {"id": 63460, "ko": "2026-10-24T19:30", "home": "Industrias Santa Coloma", "away": "ElPozo Murcia", "comp": 2758, "fs": "dY33xseA", "rfef": "https://futsal.rfef.es/partido/industrias-santa-coloma/elpozo-murcia-costa-c%C3%A1lida/34/2027"},
-    {"id": 57988, "ko": "2026-10-24T19:30", "home": "Torreense", "away": "Atlético CP", "comp": 1923, "fs": "tOrYoCft"},
-    {"id": 31801, "ko": "2026-10-24T20:30", "home": "Braga/AAUM", "away": "Sporting CP", "comp": 1213, "fs": "EJPEqIcE"},
-    {"id": 63461, "ko": "2026-10-25T12:00", "home": "O Parrulo Ferrol", "away": "Jaén Paraíso Interior", "comp": 2758, "fs": "MHYtZS5F", "rfef": "https://futsal.rfef.es/partido/o-parrulo-ferrol/ja%C3%A9n-para%C3%ADso-interior/36/2027"},
-    {"id": 63462, "ko": "2026-10-25T15:00", "home": "Noia Portus Apostoli", "away": "Peñíscola FS", "comp": 2758, "fs": "noikTxId", "rfef": "https://futsal.rfef.es/partido/noia-portus-apostoli/servigroup-pe%C3%B1%C3%ADscola-fs/35/2027"},
-    {"id": 57987, "ko": "2026-10-25T15:30", "home": "Leões Porto Salvo", "away": "Nun'Álvares", "comp": 1923, "fs": "ja3OR89O"},
-    {"id": 31803, "ko": "2026-10-25T16:30", "home": "Venda Nova", "away": "Famalicão", "comp": 1213, "fs": "IFEhxzjl"},
-    {"id": 63463, "ko": "2026-10-25T17:00", "home": "Quesos Hidalgo Manzanares FS", "away": "Illes Balears Palma Futsal", "comp": 2758, "fs": "EXhsVbmp", "rfef": "https://futsal.rfef.es/partido/quesos-hidalgo-manzanares-fs/illes-balears-palma-futsal/31/2027"},
-    {"id": 63464, "ko": "2026-10-25T19:00", "home": "Córdoba Patrimonio", "away": "Jimbee Cartagena FS", "comp": 2758, "fs": "dED9GaYj", "rfef": "https://futsal.rfef.es/partido/c%C3%B3rdoba-patrimonio-humanidad/jimbee-cartagena-costa-c%C3%A1lida/33/2027"},
-    {"id": 31806, "ko": "2026-10-26T21:15", "home": "Leões Porto Salvo", "away": "Fundão", "comp": 1213, "fs": "4j3fdesK"}
+    {
+      "id": 63457,
+      "ko": "2026-10-24T11:00",
+      "home": "Sur Seeds El Ejido Futsal",
+      "away": "FC Barcelona",
+      "comp": 2758,
+      "fs": "OK5ev3Qc",
+      "rfef": "https://futsal.rfef.es/partido/inagroup-el-ejido-futsal/bar%C3%A7a/103/2027",
+      "skip_goals": [
+        [
+          "10397",
+          33
+        ],
+        [
+          "89",
+          34
+        ]
+      ]
+    },
+    {
+      "id": 31804,
+      "ko": "2026-10-24T15:00",
+      "home": "Portimonense SC",
+      "away": "Rio Ave FC",
+      "comp": 1213,
+      "fs": "QuI0zEK0"
+    },
+    {
+      "id": 63458,
+      "ko": "2026-10-24T15:30",
+      "home": "Osasuna Magna Xota FS",
+      "away": "Wanapix AD Sala 10 Zaragoza",
+      "comp": 2758,
+      "fs": "GKVYzky3",
+      "rfef": "https://futsal.rfef.es/partido/magna-xota-fs/wanapix-ad-sala-10/102/2027"
+    },
+    {
+      "id": 63459,
+      "ko": "2026-10-24T17:30",
+      "home": "Inter FS",
+      "away": "Viña Albali Valdepeñas",
+      "comp": 2758,
+      "fs": "rk2BzLPM",
+      "rfef": "https://futsal.rfef.es/partido/movistar-inter/vi%C3%B1a-albali-valdepe%C3%B1as/32/2027"
+    },
+    {
+      "id": 31802,
+      "ko": "2026-10-24T18:00",
+      "home": "SCFZ/Zêzerovo",
+      "away": "Eléctrico",
+      "comp": 1213,
+      "fs": "nXNMsdSQ"
+    },
+    {
+      "id": 57984,
+      "ko": "2026-10-24T18:00",
+      "home": "Feijó",
+      "away": "Maia",
+      "comp": 1923,
+      "fs": "nLotpjPh"
+    },
+    {
+      "id": 57985,
+      "ko": "2026-10-24T18:00",
+      "home": "Santa Luzia",
+      "away": "GD Árvore",
+      "comp": 1923,
+      "fs": "KYqlrUg5"
+    },
+    {
+      "id": 57986,
+      "ko": "2026-10-24T19:00",
+      "home": "SL Benfica",
+      "away": "Novasemente",
+      "comp": 1923,
+      "fs": "Io5GTUvC"
+    },
+    {
+      "id": 63460,
+      "ko": "2026-10-24T19:30",
+      "home": "Industrias Santa Coloma",
+      "away": "ElPozo Murcia",
+      "comp": 2758,
+      "fs": "dY33xseA",
+      "rfef": "https://futsal.rfef.es/partido/industrias-santa-coloma/elpozo-murcia-costa-c%C3%A1lida/34/2027"
+    },
+    {
+      "id": 57988,
+      "ko": "2026-10-24T19:30",
+      "home": "Torreense",
+      "away": "Atlético CP",
+      "comp": 1923,
+      "fs": "tOrYoCft"
+    },
+    {
+      "id": 31801,
+      "ko": "2026-10-24T20:30",
+      "home": "Braga/AAUM",
+      "away": "Sporting CP",
+      "comp": 1213,
+      "fs": "EJPEqIcE"
+    },
+    {
+      "id": 63461,
+      "ko": "2026-10-25T12:00",
+      "home": "O Parrulo Ferrol",
+      "away": "Jaén Paraíso Interior",
+      "comp": 2758,
+      "fs": "MHYtZS5F",
+      "rfef": "https://futsal.rfef.es/partido/o-parrulo-ferrol/ja%C3%A9n-para%C3%ADso-interior/36/2027"
+    },
+    {
+      "id": 63462,
+      "ko": "2026-10-25T15:00",
+      "home": "Noia Portus Apostoli",
+      "away": "Peñíscola FS",
+      "comp": 2758,
+      "fs": "noikTxId",
+      "rfef": "https://futsal.rfef.es/partido/noia-portus-apostoli/servigroup-pe%C3%B1%C3%ADscola-fs/35/2027"
+    },
+    {
+      "id": 57987,
+      "ko": "2026-10-25T15:30",
+      "home": "Leões Porto Salvo",
+      "away": "Nun'Álvares",
+      "comp": 1923,
+      "fs": "ja3OR89O"
+    },
+    {
+      "id": 31803,
+      "ko": "2026-10-25T16:30",
+      "home": "Venda Nova",
+      "away": "Famalicão",
+      "comp": 1213,
+      "fs": "IFEhxzjl"
+    },
+    {
+      "id": 63463,
+      "ko": "2026-10-25T17:00",
+      "home": "Quesos Hidalgo Manzanares FS",
+      "away": "Illes Balears Palma Futsal",
+      "comp": 2758,
+      "fs": "EXhsVbmp",
+      "rfef": "https://futsal.rfef.es/partido/quesos-hidalgo-manzanares-fs/illes-balears-palma-futsal/31/2027"
+    },
+    {
+      "id": 63464,
+      "ko": "2026-10-25T19:00",
+      "home": "Córdoba Patrimonio",
+      "away": "Jimbee Cartagena FS",
+      "comp": 2758,
+      "fs": "dED9GaYj",
+      "rfef": "https://futsal.rfef.es/partido/c%C3%B3rdoba-patrimonio-humanidad/jimbee-cartagena-costa-c%C3%A1lida/33/2027"
+    },
+    {
+      "id": 31806,
+      "ko": "2026-10-26T21:15",
+      "home": "Leões Porto Salvo",
+      "away": "Fundão",
+      "comp": 1213,
+      "fs": "4j3fdesK"
+    }
   ]
 }

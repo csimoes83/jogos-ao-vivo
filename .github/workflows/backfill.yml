@@ -1,0 +1,25 @@
+name: completar fichas (backfill)
+
+on:
+  workflow_dispatch:
+    inputs:
+      only:
+        description: 'ids de jogos já terminados (separados por vírgula)'
+        required: true
+
+# grupo próprio: corre em paralelo com a vigilância ao vivo
+concurrency:
+  group: backfill
+  cancel-in-progress: false
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Completar alinhamentos/golos/cartões dos jogos indicados
+        env:
+          NFP_MCP_TOKEN: ${{ secrets.NFP_MCP_TOKEN }}
+          ONLY: ${{ github.event.inputs.only }}
+        run: python3 -I live.py --mode run --only "$ONLY" --ignore-window

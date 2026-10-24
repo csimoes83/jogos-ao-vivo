@@ -224,6 +224,15 @@ def fmt_score(s):
     return "-" if not s else f"{s[0]}-{s[1]}"
 
 
+def idle_wait(matches, done, now, horizon=dt.timedelta(hours=3)):
+    """Segundos até abrir a próxima janela de vigilância, se for dentro do horizonte; senão None."""
+    opens = [m["ko_utc"] - PRE for m in matches if m["id"] not in done and m["ko_utc"] - PRE > now]
+    if not opens:
+        return None
+    w = (min(opens) - now).total_seconds()
+    return w if w <= horizon.total_seconds() else None
+
+
 class Fatal(Exception):
     pass
 
@@ -386,10 +395,19 @@ def main():
         time.sleep(args.interval)
     if args.loop_seconds > 0:
         log(f"{passes} verificações em {time.monotonic() - t0:.0f}s; {remaining} jogo(s) ainda em vigilância")
+    keepalive = remaining > 0
+    if not keepalive and args.mode == "run" and args.loop_seconds > 0:
+        # sem jogos agora, mas o próximo abre dentro de 3 h: dorme (sem gastar pedidos) e mantém a cadeia viva até lá
+        wait = idle_wait(matches, done, utcnow())
+        if wait is not None:
+            nap = max(1, min(wait, args.loop_seconds))
+            log(f"sem jogos em vigilância; o próximo abre dentro de {wait / 60:.0f} min: espero {nap / 60:.1f} min e mantenho a cadeia")
+            time.sleep(nap)
+            keepalive = True
     out = os.environ.get("GITHUB_OUTPUT")
-    if out and args.mode == "run":  # há jogos em vigilância -> o workflow dispara já a execução seguinte (sem esperar pelo relógio do GitHub)
+    if out and args.mode == "run":  # há jogos em vigilância (ou abrem em breve) -> o workflow dispara já a execução seguinte
         with open(out, "a", encoding="utf-8") as f:
-            f.write(f"keepalive={'true' if remaining > 0 else 'false'}\n")
+            f.write(f"keepalive={'true' if keepalive else 'false'}\n")
     return finish(args, utcnow(), lines, list(dict.fromkeys(alerts)))
 
 
@@ -465,6 +483,11 @@ def selftest():
     check("parse RFEF pré-jogo", parse_rfef('<span id="status_match" class="x">&nbsp;</span><span id="result_match"> - </span>')["score"], None)
     check("parse RFEF terminado", parse_rfef('<div id="status_match" class="ph5 bg-red">Finalizado</div><span id="result_match">3 - 2</span>'),
           {"status": "Finalizado", "score": (3, 2), "finished": True})
+    ms0 = load_matches()
+    g31804 = [m for m in ms0 if m["id"] == 31804]
+    check("espera até à próxima janela (75 min)", idle_wait(g31804, set(), dt.datetime(2026, 10, 24, 12, 30, tzinfo=dt.timezone.utc)), 4500.0)
+    check("janela longe (4h45) -> não mantém a cadeia", idle_wait(g31804, set(), dt.datetime(2026, 10, 24, 9, 0, tzinfo=dt.timezone.utc)), None)
+    check("jogo já terminado não conta", idle_wait(g31804, {31804}, dt.datetime(2026, 10, 24, 12, 30, tzinfo=dt.timezone.utc)), None)
     ms = load_matches()
     check("18 jogos no ficheiro", len(ms), 18)
     check("hora de verão: 15:00 de Lisboa = 14:00Z a 24/10", [m for m in ms if m["id"] == 31804][0]["ko_utc"], ko)

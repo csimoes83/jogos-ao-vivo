@@ -97,6 +97,19 @@ class Mcp:
         except urllib.error.HTTPError as e:
             raise McpError(f"HTTP {e.code} em tools/list: {e.read().decode('utf-8', 'replace')[:200]}")
 
+    def rows(self, resource, where, columns=None, limit=100):
+        a = {"resource": resource, "where": where, "limit": limit}
+        if columns:
+            a["columns"] = columns
+        return self.call("records_list", a).get("rows", [])
+
+    def person_by_external(self, source, ext):
+        ids = self.call("external_ids", {"action": "list", "entity": "person", "source": source, "external_id": str(ext)}).get("ids", [])
+        return ids[0]["person_id"] if len(ids) == 1 else None
+
+    def save_event(self, fields):
+        return self.call("record_save", {"resource": "match_event", "fields": fields, "confirm": self.apply})
+
     def get_match(self, mid):
         return self.call("get_match", {"id": mid})["match"]
 
@@ -144,12 +157,41 @@ def classify_fs(entry):
     return "other", score
 
 
+def parse_rfef_events(html):
+    """Eventos ao vivo da RFEF: [{minute, side (home|away), kind (alt do ícone), pid (id RFEF do jogador), name}]."""
+    i = html.find('id="list_events_live"')
+    if i < 0:
+        return []
+    j = html.find('events-legend', i)
+    block = html[i:j if j > 0 else len(html)]
+    out = []
+    for chunk in block.split('class="event-content"')[1:]:
+        mm = re.search(r'class="minute">\s*(\d+)', chunk)
+        parts = chunk.split('<div class="event">')[1:]
+        if not mm or len(parts) < 2:
+            continue
+        for side, part in (("home", parts[0]), ("away", parts[1])):
+            pl = re.search(r'/jugador/[^"]*?/(\d+)"', part)
+            if not pl:
+                continue
+            kind = re.search(r'event-ico"[^>]*?alt="([^"]*)"', part)
+            nm = re.search(r'class="[^"]*name">\s*([^<]*?)\s*<', part)
+            out.append({"minute": int(mm.group(1)), "side": side, "kind": kind.group(1) if kind else "",
+                        "pid": pl.group(1), "name": nm.group(1) if nm else ""})
+    return out
+
+
 def parse_rfef(html):
     st = re.search(r'id="status_match"[^>]*>\s*([^<]*?)\s*<', html)
     rs = re.search(r'id="result_match"[^>]*>\s*(\d+)\s*-\s*(\d+)', html)
     status = st.group(1) if st else ""
     return {"status": status, "score": (int(rs.group(1)), int(rs.group(2))) if rs else None,
-            "finished": status.lower().startswith("finaliz")}
+            "finished": status.lower().startswith("finaliz"), "events": parse_rfef_events(html)}
+
+
+def norm_name(x):
+    import unicodedata
+    return " ".join("".join(c for c in unicodedata.normalize("NFD", x.lower()) if unicodedata.category(c) != "Mn").replace("-", " ").split())
 
 
 # ----------------------------------------------------------------------------- decisão
@@ -224,6 +266,55 @@ def fmt_score(s):
     return "-" if not s else f"{s[0]}-{s[1]}"
 
 
+def sync_goals(mcp, m, raw, rf, caches, log, alerts):
+    """Põe na ficha os golos (minuto + marcador) que a RFEF mostra e que ainda não estão lá. Só liga o jogador por id RFEF
+    ou, na falta dele, por nome único no plantel da equipa; se houver dúvida não escreve e avisa."""
+    goals = [e for e in rf.get("events", []) if e["kind"].lower().startswith("gol")]
+    if not goals:
+        return 0
+    for e in rf["events"]:
+        if "propia" in e["kind"].lower():
+            alerts.append(f"{m['id']}: auto-golo de {e['name']} aos {e['minute']}' não registado automaticamente (fazer à mão)")
+    comp = m["comp"]
+    if comp not in caches["meta"]:
+        r = mcp.rows("match_event", {"competition_id": comp}, ["season_id", "escalao_id", "main_competition", "main_competition_type"], limit=1)
+        caches["meta"][comp] = r[0] if r else None
+    meta = caches["meta"][comp]
+    if not meta:
+        alerts.append(f"{m['id']}: sem eventos anteriores na competição {comp}: não sei os campos da época; golos não registados")
+        return 0
+    have = {(r["person_id"], r["time"]) for r in mcp.rows("match_event", {"match_id": m["id"], "event_id": 6}, ["person_id", "time"])}
+    written = 0
+    for e in goals:
+        team = raw["gcteamhome_id"] if e["side"] == "home" else raw["gcteamaway_id"]
+        key = (e["pid"], team)
+        if key not in caches["person"]:
+            pid = mcp.person_by_external("rfef", e["pid"])
+            if pid is None:  # nome único no plantel desta equipa
+                if team not in caches["squad"]:
+                    sq = mcp.rows("squad", {"gcteam_id": team, "season_id": meta["season_id"]}, ["person_id"])
+                    ids = sorted({r["person_id"] for r in sq})
+                    names = mcp.rows("person", {"id": ids}, ["id", "name"]) if ids else []
+                    caches["squad"][team] = [(r["id"], norm_name(r["name"])) for r in names]
+                tok = set(norm_name(e["name"]).split())
+                hits = [i for i, n in caches["squad"][team] if tok and tok <= set(n.split())]
+                pid = hits[0] if len(hits) == 1 else None
+            caches["person"][key] = pid
+        pid = caches["person"][key]
+        if pid is None:
+            alerts.append(f"{m['id']}: golo de {e['name']} aos {e['minute']}' (RFEF {e['pid']}) sem jogador certo no site: não registei")
+            continue
+        if (pid, e["minute"]) in have:
+            continue
+        fields = {"competition_id": comp, **meta, "match_id": m["id"], "team_id": team, "person_id": pid, "event_id": 6, "time": e["minute"]}
+        res = mcp.save_event(fields)
+        have.add((pid, e["minute"]))
+        written += 1
+        log(f"{m['id']}: golo {e['name']} {e['minute']}' ({e['side']}) -> {'registado' if mcp.apply else 'dry-run'}"
+            f"{' (audit ' + str(res.get('audit_id')) + ')' if res.get('audit_id') else ''}")
+    return written
+
+
 def idle_wait(matches, done, now, horizon=dt.timedelta(hours=3)):
     """Segundos até abrir a próxima janela de vigilância, se for dentro do horizonte; senão None."""
     opens = [m["ko_utc"] - PRE for m in matches if m["id"] not in done and m["ko_utc"] - PRE > now]
@@ -261,7 +352,7 @@ def main():
         except McpError as e:
             print(f"::warning::{e}")
             return 1
-        need = ["get_match", "update_match", "recompute_standings"]
+        need = ["get_match", "update_match", "recompute_standings", "records_list", "record_save", "external_ids"]
         for t in need:
             print(f"{'OK  ' if t in tools else 'FALTA'} {t}")
         print(f"admin (não deve ter): {'sql_query' in tools}  | ferramentas visíveis: {len(tools)}")
@@ -277,6 +368,7 @@ def main():
         cand = [m for m in matches if m["ko_utc"] - PREFILTER <= now <= m["ko_utc"] + PREFILTER]
     lines, alerts = [], []
     done, last_msg, rf_cache = set(), {}, {}
+    caches = {"meta": {}, "person": {}, "squad": {}}
     cur = [now]
 
     def log(msg, key=None):
@@ -337,7 +429,7 @@ def main():
                 if feed is None and rf is None and not probe:
                     remaining += 1
                     continue
-                site, ko = None, m["ko_utc"]
+                site, ko, raw = None, m["ko_utc"], None
                 if mcp:
                     raw = mcp.get_match(m["id"])
                     site, ko = norm_site(raw), site_ko(raw)
@@ -350,6 +442,11 @@ def main():
                     continue
                 if not (args.ignore_window or ko - PRE <= now <= ko + POST):
                     continue
+                if rf and rf.get("events") and mcp and raw and (site["islive"] == 1 or (fs and fs[0] in ("live", "finished"))):
+                    try:
+                        sync_goals(mcp, m, raw, rf, caches, lambda msg, key=None: log(msg, key=key), alerts)
+                    except (McpError, KeyError, ValueError) as e:
+                        alerts.append(f"{tag}: erro a registar golos: {e}")
                 fields, close, al, notes, finished_saved = decide(site, fs, rf, now, ko)
                 alerts.extend(f"{tag}: {a}" for a in al)
                 for n in notes:
@@ -482,7 +579,87 @@ def selftest():
     check("parse feed agendado", classify_fs(feed["def"]), ("scheduled", None))
     check("parse RFEF pré-jogo", parse_rfef('<span id="status_match" class="x">&nbsp;</span><span id="result_match"> - </span>')["score"], None)
     check("parse RFEF terminado", parse_rfef('<div id="status_match" class="ph5 bg-red">Finalizado</div><span id="result_match">3 - 2</span>'),
-          {"status": "Finalizado", "score": (3, 2), "finished": True})
+          {"status": "Finalizado", "score": (3, 2), "finished": True, "events": []})
+    # --- eventos da RFEF e registo de golos (amostra real do El Ejido–Barça, 24/10/2026) ---
+    sample = """ltable">
+<div id="list_events_live" class="match-events">
+<div class="event-content">
+<div class="event">
+<a href="https://futsal.rfef.es/jugador/vandeson-manuel-10932/10932">
+<h5 class="ib va-m name">Vandeson <b class="block color-lightblue">[1-2]</b></h5>
+<div class="ib va-m event-avatar">
+<img src="https://t.resfu.com/img_data/players/medium/3716616.jpg" alt="Vandeson">
+</div>
+<img class="ib va-m event-ico" src="https://thumb2.besoccerapps.com/lnfs/img_web/events/accion1.png?v1" alt="Gol"/>
+</a>
+</div>
+<div class="minute">7'</div>
+<div class="event">
+</div>
+</div>
+<div class="event-content">
+<div class="event">
+</div>
+<div class="minute">6'</div>
+<div class="event">
+<a href="https://futsal.rfef.es/jugador/adolfo-12/12">
+<img class="ib va-m event-ico" src="https://thumb2.besoccerapps.com/lnfs/img_web/events/accion1.png?v1" alt="Gol"/>
+<div class="ib va-m event-avatar">
+<img src="https://t.resfu.com/img_data/players/medium/3622219.jpg" alt="Adolfo">
+</div>
+<h5 class="ib va-m name">Adolfo <b class="block color-lightblue">[0-2]</b></h5>
+</a>
+</div>
+</div>
+<div class="event-content">
+<div class="event">
+</div>
+<div class="minute">3'</div>
+<div class="event">
+<a href="https://futsal.rfef.es/jugador/antonio-845/845">
+<img class="ib va-m event-ico" src="https://thumb2.besoccerapps.com/lnfs/img_web/events/accion1.png?v1" alt="Gol"/>
+<div class="ib va-m event-avatar">
+<img src="https://t.resfu.com/img_data/players/medium/3622212.jpg" alt="Antonio">
+</div>
+<h5 class="ib va-m name">Antonio <b class="block color-lightblue">[0-1]</b></h5>
+</a>
+</div>
+</div>
+</div>
+</div>"""
+    evs = parse_rfef_events(sample)
+    check("RFEF: 3 golos lidos (minuto, lado, id RFEF)", [(e["minute"], e["side"], e["pid"]) for e in evs],
+          [(7, "home", "10932"), (6, "away", "12"), (3, "away", "845")])
+    check("RFEF: tipo do evento", {e["kind"] for e in evs}, {"Gol"})
+
+    class FakeSyncMcp:
+        apply = True
+
+        def __init__(self):
+            self.saved = []
+
+        def rows(self, resource, where, columns=None, limit=100):
+            if resource == "match_event" and "competition_id" in where:
+                return [{"season_id": 42, "escalao_id": 1, "main_competition": 33, "main_competition_type": 1}]
+            if resource == "match_event":
+                return [{"person_id": 11072, "time": 3}]          # o golo do Antonio já está na ficha
+            if resource == "squad":
+                return [{"person_id": 14363}, {"person_id": 99999}]
+            if resource == "person":
+                return [{"id": 14363, "name": "Vandeson Silva"}, {"id": 99999, "name": "Outro Jogador"}]
+
+        def person_by_external(self, source, ext):
+            return {"845": 11072, "12": 469}.get(ext)
+
+        def save_event(self, fields):
+            self.saved.append((fields["person_id"], fields["team_id"], fields["time"], fields["event_id"]))
+            return {"audit_id": 1}
+
+    fm, al2 = FakeSyncMcp(), []
+    n = sync_goals(fm, {"id": 63457, "comp": 2758}, {"gcteamhome_id": 3603, "gcteamaway_id": 44},
+                   {"events": evs}, {"meta": {}, "person": {}, "squad": {}}, lambda msg, key=None: None, al2)
+    check("golos novos registados (sem duplicar o Antonio)", (n, sorted(fm.saved)), (2, [(469, 44, 6, 6), (14363, 3603, 7, 6)]))
+    check("sem alertas", al2, [])
     ms0 = load_matches()
     g31804 = [m for m in ms0 if m["id"] == 31804]
     check("espera até à próxima janela (75 min)", idle_wait(g31804, set(), dt.datetime(2026, 10, 24, 12, 30, tzinfo=dt.timezone.utc)), 4500.0)

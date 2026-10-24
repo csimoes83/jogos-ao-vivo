@@ -176,7 +176,7 @@ def decide(site, fs, rf, now, ko):
         return None, False, alerts, notes, False
     if status == "other":
         alerts.append("estado do feed não reconhecido (adiado, cancelado ou interrompido?): não toquei no jogo")
-        return None, False, alerts, notes, False
+        return None, False, alerts, notes, True
 
     if status == "finished":
         if score is None:
@@ -381,6 +381,10 @@ def main():
         time.sleep(args.interval)
     if args.loop_seconds > 0:
         log(f"{passes} verificações em {time.monotonic() - t0:.0f}s; {remaining} jogo(s) ainda em vigilância")
+    out = os.environ.get("GITHUB_OUTPUT")
+    if out and args.mode == "run":  # há jogos em vigilância -> o workflow dispara já a execução seguinte (sem esperar pelo relógio do GitHub)
+        with open(out, "a", encoding="utf-8") as f:
+            f.write(f"keepalive={'true' if remaining > 0 else 'false'}\n")
     return finish(args, utcnow(), lines, list(dict.fromkeys(alerts)))
 
 

@@ -35,9 +35,13 @@ jobs:
   live:
     runs-on: ubuntu-latest
     timeout-minutes: 9
+    permissions:
+      contents: read
+      actions: write   # para disparar a execução seguinte
     steps:
       - uses: actions/checkout@v4
       - name: Operar jogos
+        id: operar
         env:
           NFP_MCP_TOKEN: ${{ secrets.NFP_MCP_TOKEN }}
           MODE: ${{ github.event.inputs.mode || 'run' }}
@@ -50,3 +54,10 @@ jobs:
           [ "$IGNORE_WINDOW" = "true" ] && args+=(--ignore-window)
           [ -n "$LOOP" ] && args+=(--loop-seconds "$LOOP")
           python3 -I live.py "${args[@]}"
+      # Enquanto houver jogos em vigilância, dispara já a execução seguinte (fica em fila até esta acabar):
+      # a vigilância não depende de o relógio do GitHub chegar a horas. Fora dos jogos, é o relógio que recomeça tudo.
+      - name: Continuar a vigilância
+        if: always() && steps.operar.outputs.keepalive == 'true' && (github.event_name == 'schedule' || github.event.inputs.mode == 'run')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run live.yml --repo "$GITHUB_REPOSITORY" --ref "$GITHUB_REF_NAME" -f mode=run -f loop_seconds=330

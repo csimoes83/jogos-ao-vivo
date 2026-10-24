@@ -1,5 +1,5 @@
 {
-  "_nota": "ko = hora de Lisboa (a do site). fs = id do jogo no feed de futsal do Flashscore. rfef = página oficial (só Espanha, confirmação).",
+  "_nota": "ko = hora de Lisboa (a do site). fs = id do jogo no feed de futsal do Flashscore. rfef = página oficial (só Espanha, confirmação). (Brasil: LNF Cresol - Fase Final, horas de Lisboa.)",
   "matches": [
     {
       "id": 63457,
@@ -162,6 +162,30 @@
       "away": "Fundão",
       "comp": 1213,
       "fs": "4j3fdesK"
+    },
+    {
+      "id": 63791,
+      "ko": "2026-10-24T20:00",
+      "home": "Magnus Futsal",
+      "away": "Corinthians",
+      "comp": 2763,
+      "fs": "MFFGEivA"
+    },
+    {
+      "id": 63792,
+      "ko": "2026-10-24T22:00",
+      "home": "Praia Clube",
+      "away": "Jaraguá Futsal",
+      "comp": 2763,
+      "fs": "be9f79Wq"
+    },
+    {
+      "id": 63793,
+      "ko": "2026-10-25T00:30",
+      "home": "Atlântico",
+      "away": "Carlos Barbosa",
+      "comp": 2763,
+      "fs": "MePMhAHj"
     }
   ]
 }

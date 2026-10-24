@@ -41,6 +41,7 @@ EVENT_META = {
     1213: {"season_id": 42, "escalao_id": 1, "main_competition": 26, "main_competition_type": 1},   # Liga Placard
     1923: {"season_id": 42, "escalao_id": 2, "main_competition": 27, "main_competition_type": 1},   # Liga Feminina Placard
     2758: {"season_id": 42, "escalao_id": 1, "main_competition": 33, "main_competition_type": 1},   # Liga Prime Futsal
+    2763: {"season_id": 42, "escalao_id": 1, "main_competition": 28, "main_competition_type": 1},   # LNF Cresol (Brasil)
 }
 PREFILTER = dt.timedelta(hours=12)      # só pergunta ao site por jogos perto da hora prevista
 
@@ -114,6 +115,10 @@ class Mcp:
     def person_by_external(self, source, ext):
         ids = self.call("external_ids", {"action": "list", "entity": "person", "source": source, "external_id": str(ext)}).get("ids", [])
         return ids[0]["person_id"] if len(ids) == 1 else None
+
+    def save_match_fields(self, mid, fields):
+        """Campos que o update_match não trata (ex.: part = 1.ª/2.ª parte): record_save resource=match."""
+        return self.call("record_save", {"resource": "match", "id": mid, "fields": fields, "confirm": self.apply})
 
     def save_event(self, fields):
         return self.call("record_save", {"resource": "match_event", "fields": fields, "confirm": self.apply})
@@ -392,6 +397,16 @@ def parse_fs_lineups(raw):
     return out
 
 
+def desired_part(ac, status, max_minute):
+    """1.ª ou 2.ª parte: devolve 2 quando o Flashscore diz que é a 2.ª parte (AC=13), o jogo acabou ou já houve algo depois dos 20';
+    caso contrário None (não mexe; nunca volta atrás)."""
+    if ac == "13" or status == "finished":
+        return 2
+    if max_minute is not None and max_minute > 20:
+        return 2
+    return None
+
+
 FS_EVENT = {"Goal": 6, "Yellow Card": 3, "Red Card": 5, "Own Goal": 9}
 
 
@@ -430,7 +445,7 @@ def sync_fs_sheet(mcp, m, raw, lineup, caches, log, alerts, goals_cards=True):
         if team not in caches["squad3"]:
             sq = mcp.rows("squad", {"gcteam_id": team, "season_id": meta["season_id"]}, ["person_id", "number"])
             ids = sorted({r["person_id"] for r in sq})
-            names = {r["id"]: norm_name(r["name"]) for r in mcp.rows("person", {"id": ids}, ["id", "name"])} if ids else {}
+            names = {r["id"]: norm_name(f'{r["name"]} {r.get("fpf_name") or ""}') for r in mcp.rows("person", {"id": ids}, ["id", "name", "fpf_name"])} if ids else {}
             nums = {}
             for r in sq:
                 nums.setdefault(r["person_id"], r.get("number") or 0)
@@ -601,6 +616,7 @@ def main():
                     continue
                 if not (args.ignore_window or ko - PRE <= now <= ko + POST):
                     continue
+                lin = None
                 if mcp and raw and fs and fs[0] in ("live", "finished"):
                     try:  # ficha do Flashscore: alinhamentos (todos os jogos) e, em Portugal, golos e cartões
                         lin = parse_fs_lineups(http_get(FS_LI.format(mid=m["fs"]) + f"?t={int(time.time() * 1000)}", FS_HEADERS))
@@ -616,6 +632,17 @@ def main():
                         sync_goals(mcp, m, raw, rf, caches, lambda msg, key=None: log(msg, key=key), alerts)
                     except (McpError, KeyError, ValueError) as e:
                         alerts.append(f"{tag}: erro a registar golos: {e}")
+                if mcp and raw and fs and fs[0] in ("live", "finished") and int(raw.get("part") or 1) < 2:
+                    try:  # 1.ª -> 2.ª parte (aos 20'): usa o estado do Flashscore e, em último caso, os minutos dos eventos
+                        mins = [e["minute"] for e in (rf or {}).get("events", [])]
+                        if lin:
+                            mins += [i["min"] for s_ in ("home", "away") for pl in lin[s_] for i in pl["inc"] if i["min"] is not None]
+                        entry = feed.get(m["fs"]) if feed else None
+                        if desired_part(entry["ac"] if entry else None, fs[0], max(mins) if mins else None) == 2:
+                            mcp.save_match_fields(m["id"], {"part": 2})
+                            log(f"{tag}: passou à 2.ª parte -> {'APLICADO' if mcp.apply else 'dry-run'}")
+                    except (McpError, KeyError, ValueError) as e:
+                        alerts.append(f"{tag}: erro a passar à 2.ª parte: {e}")
                 fields, close, al, notes, finished_saved = decide(site, fs, rf, now, ko)
                 alerts.extend(f"{tag}: {a}" for a in al)
                 for n in notes:
@@ -865,6 +892,7 @@ def selftest():
            (104, norm_name("André Souza"), 33), (105, norm_name("Andriy Dzyalochynskyy"), 17)]
     check("resolve: «Reis T.» -> Tomás Reis", resolve_fs_player({"name": "Reis T.", "last": "Reis", "num": 10}, sqh), 101)
     check("resolve: «Souza A.» -> André Souza", resolve_fs_player({"name": "Souza A.", "last": "Souza", "num": 33}, sqh), 104)
+    check("resolve: «Cavalcante D.» -> Djaelson (pelo nome FPF completo)", resolve_fs_player({"name": "Cavalcante D.", "last": "Cavalcante", "num": 92}, [(104, norm_name("Djaelson Djaelson Cavalcante Alves Filho"), 92)]), 104)
     check("resolve: grafia diferente («Dzyalochynsky» vs «Dzyalochynskyy») -> None", resolve_fs_player({"name": "Dzyalochynsky A.", "last": "Dzyalochynsky", "num": 17}, sqh), None)
     check("resolve: nome único manda se a camisola não bate com ninguém compatível", resolve_fs_player({"name": "Reis T.", "last": "Reis", "num": 29}, sqh), 101)
     sq_dup = [(201, norm_name("Rui Lopes"), 7), (202, norm_name("Rui Silva"), 9)]
@@ -884,7 +912,8 @@ def selftest():
             if resource == "squad":
                 return []
             if resource == "person":
-                return [{"id": 101, "name": "Tomás Reis"}, {"id": 102, "name": "Luiggi Baptista"}, {"id": 103, "name": "Gui Marques"}]
+                return [{"id": 101, "name": "Tomás Reis"}, {"id": 102, "name": "Luiggi Baptista"}, {"id": 103, "name": "Gui Marques"},
+                        {"id": 104, "name": "Djaelson", "fpf_name": "Djaelson Cavalcante Alves Filho"}]
 
         def save_event(self, fields):
             self.saved.append((fields["person_id"], fields["event_id"], fields["time"]))
@@ -911,13 +940,18 @@ def selftest():
     sync_fs_sheet(fsm2, {"id": 63457, "comp": 2758, "rfef": "x"}, {"gcteamhome_id": 108, "gcteamaway_id": 5}, lin,
                   {"squad3": {}, "fsplayer": {}}, lambda msg, key=None: None, [], goals_cards=False)
     check("ficha (jogo com RFEF): só alinhamentos, sem golos/cartões", sorted(e for e in fsm2.saved if e[1] not in (1, 2)), [])
+    check("parte: AC=13 (2.ª parte do Flashscore) -> 2", desired_part("13", "live", None), 2)
+    check("parte: 1.ª parte aos 18' -> não mexe", desired_part("12", "live", 18), None)
+    check("parte: algum evento depois dos 20' -> 2", desired_part("12", "live", 22), 2)
+    check("parte: intervalo (AC=38) sem eventos novos -> não mexe", desired_part("38", "live", 20), None)
+    check("parte: jogo terminado -> 2", desired_part("3", "finished", None), 2)
     ms0 = load_matches()
     g31804 = [m for m in ms0 if m["id"] == 31804]
     check("espera até à próxima janela (75 min)", idle_wait(g31804, set(), dt.datetime(2026, 10, 24, 12, 30, tzinfo=dt.timezone.utc)), 4500.0)
     check("janela longe (4h45) -> não mantém a cadeia", idle_wait(g31804, set(), dt.datetime(2026, 10, 24, 9, 0, tzinfo=dt.timezone.utc)), None)
     check("jogo já terminado não conta", idle_wait(g31804, {31804}, dt.datetime(2026, 10, 24, 12, 30, tzinfo=dt.timezone.utc)), None)
     ms = load_matches()
-    check("18 jogos no ficheiro", len(ms), 18)
+    check("21 jogos no ficheiro (18 + 3 do Brasil)", len(ms), 21)
     check("hora de verão: 15:00 de Lisboa = 14:00Z a 24/10", [m for m in ms if m["id"] == 31804][0]["ko_utc"], ko)
     check("depois da mudança de hora (26/10 21:15) = 21:15Z", [m for m in ms if m["id"] == 31806][0]["ko_utc"].hour, 21)
     # --- simulação completa: agendado -> ao vivo 0-0 -> 1-0 -> terminado 3-2, com feed e site falsos ---
@@ -927,6 +961,7 @@ def selftest():
     clock = {"t": dt.datetime(2026, 10, 24, 13, 50, tzinfo=dt.timezone.utc)}  # 14:50 de Lisboa; jogo às 15:00 (14:00Z)
     site = {"goalhome": None, "goalaway": None, "islive": 0}
     calls = []
+    part_state = {"v": 1}
 
     def fake_now():
         t = clock["t"]
@@ -955,7 +990,12 @@ def selftest():
             self.apply = apply
 
         def get_match(self, mid):
-            return {"date": "2026-10-24 15:00:00", **site}
+            return {"date": "2026-10-24 15:00:00", "part": part_state["v"], **site}
+
+        def save_match_fields(self, mid, fields):
+            calls.append(("save_match", dict(fields)))
+            part_state["v"] = fields["part"]
+            return {"audit_id": 2}
 
         def update_match(self, mid, fields):
             calls.append(("update", dict(fields)))
@@ -984,6 +1024,7 @@ def selftest():
             os.environ["NFP_MCP_TOKEN"] = saved_tok
     check("simulação: escritas por ordem", calls, [
         ("update", {"goalhome": 0, "goalaway": 0, "islive": 1}),
+        ("save_match", {"part": 2}),
         ("update", {"goalhome": 1}),
         ("update", {"goalhome": 3, "goalaway": 2, "islive": 0}),
         ("recompute", 1213),

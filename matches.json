@@ -158,7 +158,10 @@
       "away": "Jimbee Cartagena FS",
       "comp": 2758,
       "fs": "dED9GaYj",
-      "rfef": "https://futsal.rfef.es/partido/c%C3%B3rdoba-patrimonio-humanidad/jimbee-cartagena-costa-c%C3%A1lida/33/2027"
+      "rfef": "https://futsal.rfef.es/partido/c%C3%B3rdoba-patrimonio-humanidad/jimbee-cartagena-costa-c%C3%A1lida/33/2027",
+      "skip_goals": [
+        ["931", 2]
+      ]
     },
     {
       "id": 31806,

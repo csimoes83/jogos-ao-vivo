@@ -110,7 +110,12 @@
       "away": "Jaén Paraíso Interior",
       "comp": 2758,
       "fs": "MHYtZS5F",
-      "rfef": "https://futsal.rfef.es/partido/o-parrulo-ferrol/ja%C3%A9n-para%C3%ADso-interior/36/2027"
+      "rfef": "https://futsal.rfef.es/partido/o-parrulo-ferrol/ja%C3%A9n-para%C3%ADso-interior/36/2027",
+      "skip_goals": [
+        ["362", 13],
+        ["11217", 38],
+        ["9511", 39]
+      ]
     },
     {
       "id": 63462,

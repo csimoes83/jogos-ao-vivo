@@ -575,7 +575,9 @@ def main():
         feed = None
         try:
             feed = {}
-            for d in (-1, 0, 1):
+            # dias do feed: ontem, hoje, amanhã e os dias dos jogos em vigilância (a Champions vai até 31/10)
+            days = {-1, 0, 1} | {(m["ko_utc"].astimezone(LISBON).date() - now.astimezone(LISBON).date()).days for m in cand}
+            for d in sorted(days):
                 feed.update(parse_feed(http_get(FS_FEED.format(d=d) + f"?t={int(time.time() * 1000)}", FS_HEADERS)))
         except Exception as e:  # noqa: BLE001
             alerts.append(f"feed do Flashscore indisponível: {e}")

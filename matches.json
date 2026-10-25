@@ -79,6 +79,14 @@
       "fs": "Io5GTUvC"
     },
     {
+      "id": 57988,
+      "ko": "2026-10-24T19:30",
+      "home": "Torreense",
+      "away": "Atlético CP",
+      "comp": 1923,
+      "fs": "tOrYoCft"
+    },
+    {
       "id": 63460,
       "ko": "2026-10-24T19:30",
       "home": "Industrias Santa Coloma",
@@ -88,12 +96,12 @@
       "rfef": "https://futsal.rfef.es/partido/industrias-santa-coloma/elpozo-murcia-costa-c%C3%A1lida/34/2027"
     },
     {
-      "id": 57988,
-      "ko": "2026-10-24T19:30",
-      "home": "Torreense",
-      "away": "Atlético CP",
-      "comp": 1923,
-      "fs": "tOrYoCft"
+      "id": 63791,
+      "ko": "2026-10-24T20:00",
+      "home": "Magnus Futsal",
+      "away": "Corinthians",
+      "comp": 2763,
+      "fs": "MFFGEivA"
     },
     {
       "id": 31801,
@@ -104,6 +112,22 @@
       "fs": "EJPEqIcE"
     },
     {
+      "id": 63792,
+      "ko": "2026-10-24T22:00",
+      "home": "Praia Clube",
+      "away": "Jaraguá Futsal",
+      "comp": 2763,
+      "fs": "be9f79Wq"
+    },
+    {
+      "id": 63793,
+      "ko": "2026-10-25T00:30",
+      "home": "Atlântico",
+      "away": "Carlos Barbosa",
+      "comp": 2763,
+      "fs": "MePMhAHj"
+    },
+    {
       "id": 63461,
       "ko": "2026-10-25T12:00",
       "home": "O Parrulo Ferrol",
@@ -112,9 +136,18 @@
       "fs": "MHYtZS5F",
       "rfef": "https://futsal.rfef.es/partido/o-parrulo-ferrol/ja%C3%A9n-para%C3%ADso-interior/36/2027",
       "skip_goals": [
-        ["362", 13],
-        ["11217", 38],
-        ["9511", 39]
+        [
+          "362",
+          13
+        ],
+        [
+          "11217",
+          38
+        ],
+        [
+          "9511",
+          39
+        ]
       ]
     },
     {
@@ -160,7 +193,10 @@
       "fs": "dED9GaYj",
       "rfef": "https://futsal.rfef.es/partido/c%C3%B3rdoba-patrimonio-humanidad/jimbee-cartagena-costa-c%C3%A1lida/33/2027",
       "skip_goals": [
-        ["931", 2]
+        [
+          "931",
+          2
+        ]
       ]
     },
     {
@@ -172,28 +208,388 @@
       "fs": "4j3fdesK"
     },
     {
-      "id": 63791,
-      "ko": "2026-10-24T20:00",
-      "home": "Magnus Futsal",
-      "away": "Corinthians",
-      "comp": 2763,
-      "fs": "MFFGEivA"
+      "id": 63369,
+      "ko": "2026-10-27T12:00",
+      "home": "Araz Naxçivan",
+      "away": "Ujpest",
+      "comp": 2750,
+      "fs": "rsvL0phd"
     },
     {
-      "id": 63792,
-      "ko": "2026-10-24T22:00",
-      "home": "Praia Clube",
-      "away": "Jaraguá Futsal",
-      "comp": 2763,
-      "fs": "be9f79Wq"
+      "id": 63367,
+      "ko": "2026-10-27T15:00",
+      "home": "Kauno Žalgiris",
+      "away": "Unisport",
+      "comp": 2749,
+      "fs": "GpZEMREF"
     },
     {
-      "id": 63793,
-      "ko": "2026-10-25T00:30",
-      "home": "Atlântico",
-      "away": "Carlos Barbosa",
-      "comp": 2763,
-      "fs": "MePMhAHj"
+      "id": 63368,
+      "ko": "2026-10-27T18:00",
+      "home": "Doukas SAC",
+      "away": "FC Differdange 03",
+      "comp": 2749,
+      "fs": "lbXMK5qS"
+    },
+    {
+      "id": 63370,
+      "ko": "2026-10-27T18:00",
+      "home": "Buba Mara",
+      "away": "Piast Gliwice Futsal",
+      "comp": 2750,
+      "fs": "hUjZ9lV9"
+    },
+    {
+      "id": 63375,
+      "ko": "2026-10-28T13:30",
+      "home": "Buba Mara",
+      "away": "Araz Naxçivan",
+      "comp": 2750,
+      "fs": "ATuD26Nq"
+    },
+    {
+      "id": 63373,
+      "ko": "2026-10-28T15:00",
+      "home": "Doukas SAC",
+      "away": "Kauno Žalgiris",
+      "comp": 2749,
+      "fs": "AmW6Omp3"
+    },
+    {
+      "id": 63376,
+      "ko": "2026-10-28T15:00",
+      "home": "FC Barcelona",
+      "away": "Futsal Minerva",
+      "comp": 2754,
+      "fs": "883Ap1ke"
+    },
+    {
+      "id": 63371,
+      "ko": "2026-10-28T15:30",
+      "home": "Luxol St. Andrews Futsal",
+      "away": "Hjørring Futsal Klub",
+      "comp": 2748,
+      "fs": "K0EnyRT8"
+    },
+    {
+      "id": 63377,
+      "ko": "2026-10-28T16:00",
+      "home": "Sporting CP",
+      "away": "FC Stalitsa Minsk",
+      "comp": 2752,
+      "fs": "QublFCfn"
+    },
+    {
+      "id": 63378,
+      "ko": "2026-10-28T16:00",
+      "home": "SL Benfica",
+      "away": "FC HIT Kiev",
+      "comp": 2751,
+      "fs": "jPtURkvh"
+    },
+    {
+      "id": 63379,
+      "ko": "2026-10-28T16:30",
+      "home": "United Galati",
+      "away": "Royal Sporting Anderlecht Futsal",
+      "comp": 2753,
+      "fs": "GSF82ZAt"
+    },
+    {
+      "id": 63380,
+      "ko": "2026-10-28T16:30",
+      "home": "SC Athletic Futsal",
+      "away": "FK Chrudim",
+      "comp": 2747,
+      "fs": "2uAZorrR"
+    },
+    {
+      "id": 63374,
+      "ko": "2026-10-28T18:00",
+      "home": "FC Differdange 03",
+      "away": "Unisport",
+      "comp": 2749,
+      "fs": "KtOhFq7k"
+    },
+    {
+      "id": 63381,
+      "ko": "2026-10-28T18:00",
+      "home": "Semey FC",
+      "away": "FK Lučenec",
+      "comp": 2754,
+      "fs": "GY6IruK7"
+    },
+    {
+      "id": 63382,
+      "ko": "2026-10-28T18:00",
+      "home": "Piast Gliwice Futsal",
+      "away": "Ujpest",
+      "comp": 2750,
+      "fs": "voks8SaM"
+    },
+    {
+      "id": 63383,
+      "ko": "2026-10-28T19:00",
+      "home": "Etoile Lavalloise",
+      "away": "MNK Olmissum",
+      "comp": 2752,
+      "fs": "Y51dDjPb"
+    },
+    {
+      "id": 63372,
+      "ko": "2026-10-28T19:30",
+      "home": "Mad Max",
+      "away": "L84 Torino",
+      "comp": 2748,
+      "fs": "hSRgZ4bL"
+    },
+    {
+      "id": 63384,
+      "ko": "2026-10-28T19:30",
+      "home": "Kairat Almaty",
+      "away": "TFK Beitar",
+      "comp": 2753,
+      "fs": "02QarWPO"
+    },
+    {
+      "id": 63385,
+      "ko": "2026-10-28T19:30",
+      "home": "ElPozo Murcia",
+      "away": "Tigers Roermond",
+      "comp": 2751,
+      "fs": "OA0iMo8T"
+    },
+    {
+      "id": 63386,
+      "ko": "2026-10-28T19:30",
+      "home": "Athletic Club Graz",
+      "away": "KMF Loznica-Grad 2018",
+      "comp": 2747,
+      "fs": "dOGXRMje"
+    },
+    {
+      "id": 63389,
+      "ko": "2026-10-29T15:00",
+      "home": "Semey FC",
+      "away": "FC Barcelona",
+      "comp": 2754,
+      "fs": "4CEWiqcL"
+    },
+    {
+      "id": 63387,
+      "ko": "2026-10-29T15:30",
+      "home": "Mad Max",
+      "away": "Luxol St. Andrews Futsal",
+      "comp": 2748,
+      "fs": "S6R0DNy2"
+    },
+    {
+      "id": 63390,
+      "ko": "2026-10-29T16:00",
+      "home": "Etoile Lavalloise",
+      "away": "Sporting CP",
+      "comp": 2752,
+      "fs": "4WKWdVvI"
+    },
+    {
+      "id": 63391,
+      "ko": "2026-10-29T16:00",
+      "home": "ElPozo Murcia",
+      "away": "SL Benfica",
+      "comp": 2751,
+      "fs": "OIlr4nno"
+    },
+    {
+      "id": 63392,
+      "ko": "2026-10-29T16:30",
+      "home": "United Galati",
+      "away": "Kairat Almaty",
+      "comp": 2753,
+      "fs": "SlSipheC"
+    },
+    {
+      "id": 63393,
+      "ko": "2026-10-29T16:30",
+      "home": "Athletic Club Graz",
+      "away": "SC Athletic Futsal",
+      "comp": 2747,
+      "fs": "URBRm4DE"
+    },
+    {
+      "id": 63394,
+      "ko": "2026-10-29T18:00",
+      "home": "FK Lučenec",
+      "away": "Futsal Minerva",
+      "comp": 2754,
+      "fs": "CbLylzdm"
+    },
+    {
+      "id": 63395,
+      "ko": "2026-10-29T19:00",
+      "home": "MNK Olmissum",
+      "away": "FC Stalitsa Minsk",
+      "comp": 2752,
+      "fs": "Eq3C98ON"
+    },
+    {
+      "id": 63388,
+      "ko": "2026-10-29T19:30",
+      "home": "L84 Torino",
+      "away": "Hjørring Futsal Klub",
+      "comp": 2748,
+      "fs": "OAIPTrMr"
+    },
+    {
+      "id": 63396,
+      "ko": "2026-10-29T19:30",
+      "home": "Royal Sporting Anderlecht Futsal",
+      "away": "TFK Beitar",
+      "comp": 2753,
+      "fs": "OhJG0Dug"
+    },
+    {
+      "id": 63397,
+      "ko": "2026-10-29T19:30",
+      "home": "Tigers Roermond",
+      "away": "FC HIT Kiev",
+      "comp": 2751,
+      "fs": "KtnNGPVj"
+    },
+    {
+      "id": 63398,
+      "ko": "2026-10-29T19:30",
+      "home": "KMF Loznica-Grad 2018",
+      "away": "FK Chrudim",
+      "comp": 2747,
+      "fs": "4lKuQ0L7"
+    },
+    {
+      "id": 63401,
+      "ko": "2026-10-30T12:00",
+      "home": "Ujpest",
+      "away": "Buba Mara",
+      "comp": 2750,
+      "fs": "Ecz08yf5"
+    },
+    {
+      "id": 63399,
+      "ko": "2026-10-30T16:00",
+      "home": "Unisport",
+      "away": "Doukas SAC",
+      "comp": 2749,
+      "fs": "nBY76FOH"
+    },
+    {
+      "id": 63402,
+      "ko": "2026-10-30T18:00",
+      "home": "Piast Gliwice Futsal",
+      "away": "Araz Naxçivan",
+      "comp": 2750,
+      "fs": "fDsHx7hA"
+    },
+    {
+      "id": 63400,
+      "ko": "2026-10-30T19:00",
+      "home": "FC Differdange 03",
+      "away": "Kauno Žalgiris",
+      "comp": 2749,
+      "fs": "Qa4lKbxq"
+    },
+    {
+      "id": 63405,
+      "ko": "2026-10-31T14:00",
+      "home": "Futsal Minerva",
+      "away": "Semey FC",
+      "comp": 2754,
+      "fs": "tCb46rCE"
+    },
+    {
+      "id": 63403,
+      "ko": "2026-10-31T15:30",
+      "home": "Hjørring Futsal Klub",
+      "away": "Mad Max",
+      "comp": 2748,
+      "fs": "hA0ul78j"
+    },
+    {
+      "id": 63406,
+      "ko": "2026-10-31T16:00",
+      "home": "FC Stalitsa Minsk",
+      "away": "Etoile Lavalloise",
+      "comp": 2752,
+      "fs": "tW44BUgB"
+    },
+    {
+      "id": 63407,
+      "ko": "2026-10-31T16:00",
+      "home": "FC HIT Kiev",
+      "away": "ElPozo Murcia",
+      "comp": 2751,
+      "fs": "W2rpO7wH"
+    },
+    {
+      "id": 63408,
+      "ko": "2026-10-31T16:30",
+      "home": "TFK Beitar",
+      "away": "United Galati",
+      "comp": 2753,
+      "fs": "d6HObiA5"
+    },
+    {
+      "id": 63409,
+      "ko": "2026-10-31T16:30",
+      "home": "FK Chrudim",
+      "away": "Athletic Club Graz",
+      "comp": 2747,
+      "fs": "KGhRBA0c"
+    },
+    {
+      "id": 63410,
+      "ko": "2026-10-31T17:00",
+      "home": "FK Lučenec",
+      "away": "FC Barcelona",
+      "comp": 2754,
+      "fs": "ze52nNKr"
+    },
+    {
+      "id": 63411,
+      "ko": "2026-10-31T19:15",
+      "home": "MNK Olmissum",
+      "away": "Sporting CP",
+      "comp": 2752,
+      "fs": "ATNve99U"
+    },
+    {
+      "id": 63404,
+      "ko": "2026-10-31T19:30",
+      "home": "L84 Torino",
+      "away": "Luxol St. Andrews Futsal",
+      "comp": 2748,
+      "fs": "CG2dIx7e"
+    },
+    {
+      "id": 63412,
+      "ko": "2026-10-31T19:30",
+      "home": "Royal Sporting Anderlecht Futsal",
+      "away": "Kairat Almaty",
+      "comp": 2753,
+      "fs": "KOOqnEQa"
+    },
+    {
+      "id": 63413,
+      "ko": "2026-10-31T19:30",
+      "home": "Tigers Roermond",
+      "away": "SL Benfica",
+      "comp": 2751,
+      "fs": "OxuxQT84"
+    },
+    {
+      "id": 63414,
+      "ko": "2026-10-31T19:30",
+      "home": "KMF Loznica-Grad 2018",
+      "away": "SC Athletic Futsal",
+      "comp": 2747,
+      "fs": "jqZRGpml"
     }
   ]
 }

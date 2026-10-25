@@ -951,7 +951,7 @@ def selftest():
     check("janela longe (4h45) -> não mantém a cadeia", idle_wait(g31804, set(), dt.datetime(2026, 10, 24, 9, 0, tzinfo=dt.timezone.utc)), None)
     check("jogo já terminado não conta", idle_wait(g31804, {31804}, dt.datetime(2026, 10, 24, 12, 30, tzinfo=dt.timezone.utc)), None)
     ms = load_matches()
-    check("21 jogos no ficheiro (18 + 3 do Brasil)", len(ms), 21)
+    check("jogos no ficheiro (18 + 3 do Brasil + 48 da Champions)", len(ms), 69)
     check("hora de verão: 15:00 de Lisboa = 14:00Z a 24/10", [m for m in ms if m["id"] == 31804][0]["ko_utc"], ko)
     check("depois da mudança de hora (26/10 21:15) = 21:15Z", [m for m in ms if m["id"] == 31806][0]["ko_utc"].hour, 21)
     # --- simulação completa: agendado -> ao vivo 0-0 -> 1-0 -> terminado 3-2, com feed e site falsos ---

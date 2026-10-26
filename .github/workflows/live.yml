@@ -2,9 +2,21 @@ name: jogos ao vivo
 
 on:
   schedule:
-    # UTC. 24 horas por dia, todos os dias (há jogos do Brasil à noite). O repositório é público: minutos de execução ilimitados.
-    # Fora de jogos cada execução acaba em ~20 s e o operador só escreve perto de cada jogo.
-    - cron: '*/5 * * * *'
+    # UTC (= hora de Lisboa até 28/03). Só nas horas dos jogos conhecidos (matches.json), não 24 h: de 27 a 31/10 a Champions
+    # (primeiro jogo às 12:00 / 13:30 / 15:00 / 12:00 / 14:00 de Lisboa). Na hora antes do primeiro jogo de cada dia dispara de 5 em 5 min
+    # (o relógio do GitHub falha: a 26/10 não disparou nada nos 45 min a seguir ao arranque) e depois de 10 em 10 min, só como rede:
+    # cada execução liga a seguinte enquanto houver jogos em vigilância. Minutos fora de :00/:30 (os mais carregados do GitHub).
+    # Jogo novo fora destas janelas = acrescentar aqui a janela dele.
+    - cron: '7-59/5 11 27 10 *'
+    - cron: '7-59/10 12-20 27 10 *'
+    - cron: '7-59/5 13 28 10 *'
+    - cron: '7-59/10 14-21 28 10 *'
+    - cron: '7-59/5 14 29 10 *'
+    - cron: '7-59/10 15-21 29 10 *'
+    - cron: '7-59/5 11 30 10 *'
+    - cron: '7-59/10 12-21 30 10 *'
+    - cron: '7-59/5 13 31 10 *'
+    - cron: '7-59/10 14-21 31 10 *'
   workflow_dispatch:
     inputs:
       mode:

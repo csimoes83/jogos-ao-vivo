@@ -2,8 +2,9 @@ name: jogos ao vivo
 
 on:
   schedule:
-    # UTC. Todos os dias, das 9h às 23h (cobre os jogos de hoje e dos próximos dias; o operador só escreve perto de cada jogo).
-    - cron: '*/5 9-23 * * *'
+    # UTC. 24 horas por dia, todos os dias (há jogos do Brasil à noite). O repositório é público: minutos de execução ilimitados.
+    # Fora de jogos cada execução acaba em ~20 s e o operador só escreve perto de cada jogo.
+    - cron: '*/5 * * * *'
   workflow_dispatch:
     inputs:
       mode:

@@ -1,0 +1,14 @@
+name: teste api uefa
+on:
+  workflow_dispatch:
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ler a API da UEFA
+        run: |
+          for u in "https://match.uefa.com/v5/matches/2049010" "https://match.uefa.com/v5/matches/2049010/events?filter=GOALS&offset=0&limit=200"; do
+            echo "== $u"
+            curl -s -m 30 -o /tmp/p.json -A "Mozilla/5.0" -H "Origin: https://www.uefa.com" -w "HTTP %{http_code} bytes %{size_download}\n" "$u" || echo "curl exit $?"
+            head -c 200 /tmp/p.json | tr -d '\n'; echo
+          done

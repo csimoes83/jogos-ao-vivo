@@ -502,6 +502,29 @@ class Fatal(Exception):
     pass
 
 
+# ----------------------------------------------------------------------------- UEFA (Champions: golos, cartões e escalações ao vivo)
+UEFA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "uefa")
+uefa_last = [0.0]
+
+
+def uefa_sync(mcp, ids, log):
+    """Lê a API da UEFA (match.uefa.com, que o runner do GitHub alcança) e envia a ficha ao site (fill: só acrescenta o que falta)."""
+    sys.path.insert(0, UEFA_DIR)
+    import uefa_ficha
+    bundle, notes = uefa_ficha.build(ids)
+    for n in notes:
+        log(f"UEFA {n}")
+    if not bundle.get("matches"):
+        return
+    body = json.dumps(bundle, ensure_ascii=False).encode()
+    name = f"uefa_{int(time.time())}.json"
+    up = mcp.call("import_sheets", {"action": "upload"})["upload_url"].replace("{file-name}", name)
+    req = urllib.request.Request(up, data=body, method="POST", headers={"Content-Type": "application/json", "User-Agent": UA})
+    urllib.request.urlopen(req, timeout=60).read()
+    res = mcp.call("import_sheets", {"action": "run", "file": name, "existing": "fill", "confirm": mcp.apply})
+    log(f"UEFA {ids}: {res.get('summary')} (job {res.get('job_id')})")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--mode", choices=["probe", "dry", "run", "check"], default="run")
@@ -676,6 +699,14 @@ def main():
                 log(f"classificação da competição {comp} recalculada ({tag})")
             except McpError as e:
                 alerts.append(f"competição {comp}: não consegui recalcular a classificação ({e}); fazer à mão")
+        if mcp is not None and args.mode == "run" and now.timestamp() - uefa_last[0] >= 60:
+            uefa_last[0] = now.timestamp()
+            ids = [m["id"] for m in cand if str(m["id"]) in json.load(open(os.path.join(UEFA_DIR, "mapa.json"), encoding="utf-8"))["jogos"]]
+            if ids:
+                try:
+                    uefa_sync(mcp, ids, log)
+                except Exception as e:  # noqa: BLE001 - a UEFA nunca derruba a vigilância
+                    log(f"UEFA falhou: {e}")
         return remaining
 
     t0 = time.monotonic()

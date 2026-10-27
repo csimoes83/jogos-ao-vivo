@@ -508,21 +508,45 @@ uefa_last = [0.0]
 
 
 def uefa_sync(mcp, ids, log):
-    """Lê a API da UEFA (match.uefa.com, que o runner do GitHub alcança) e envia a ficha ao site (fill: só acrescenta o que falta)."""
+    """Lê a API da UEFA e grava no site os golos e cartões que faltam (evento a evento, com o token do operador).
+    Auto-golos ficam para confirmar à mão; jogadores sem ligação certa ficam por fazer (não se adivinha)."""
     sys.path.insert(0, UEFA_DIR)
     import uefa_ficha
     bundle, notes = uefa_ficha.build(ids)
     for n in notes:
         log(f"UEFA {n}")
-    if not bundle.get("matches"):
-        return
-    body = json.dumps(bundle, ensure_ascii=False).encode()
-    name = f"uefa_{int(time.time())}.json"
-    up = mcp.call("import_sheets", {"action": "upload"})["upload_url"].replace("{file-name}", name)
-    req = urllib.request.Request(up, data=body, method="POST", headers={"Content-Type": "application/json", "User-Agent": UA})
-    urllib.request.urlopen(req, timeout=60).read()
-    res = mcp.call("import_sheets", {"action": "run", "file": name, "existing": "fill", "confirm": mcp.apply})
-    log(f"UEFA {ids}: {res.get('summary')} (job {res.get('job_id')})")
+    kinds = {"goal": 6, "yellow": 3, "second_yellow": 4, "red": 5}
+    for m in bundle.get("matches", []):
+        mid = int(m["our_match_id"])
+        comp = int(m["competition"])
+        home, away = m["home"], m["away"]
+        team_of = {t["id"]: t["our_team_id"] for t in bundle.get("teams", [])}
+        side_of = {}
+        for side, uid in (("home", home), ("away", away)):
+            sh = (m.get("sheets") or {}).get(side) or {}
+            for pid in sh.get("starters", []) + sh.get("bench", []):
+                side_of[pid] = uid
+        have = {(str(r.get("person_id")), str(r.get("event_id")), str(r.get("time"))) for r in mcp.rows("match_event", {"match_id": mid})}
+        for e in m.get("events", []):
+            if e["type"] == "own_goal":
+                log(f"UEFA {mid}: auto-golo de {e['person']} aos {e['minute']}' — VER À MÃO")
+                continue
+            ev = kinds.get(e["type"])
+            if not ev:
+                continue
+            pid = mcp.person_by_external("uefa", e["person"])
+            if not pid:
+                log(f"UEFA {mid}: {e['type']} aos {e['minute']}' sem ligação certa ao jogador ({e['person']}) — VER À MÃO")
+                continue
+            if (str(pid), str(ev), str(e["minute"])) in have:
+                continue
+            uid = side_of.get(e["person"])
+            if uid is None:
+                log(f"UEFA {mid}: {e['type']} de {e['person']} fora da ficha — VER À MÃO")
+                continue
+            mcp.save_event({"competition_id": comp, "season_id": 42, "escalao_id": 1, "main_competition": 57, "main_competition_type": 2,
+                            "match_id": mid, "team_id": team_of[uid], "person_id": pid, "event_id": ev, "time": e["minute"]})
+            log(f"UEFA {mid}: gravado {e['type']} aos {e['minute']}' ({pid})")
 
 
 def main():

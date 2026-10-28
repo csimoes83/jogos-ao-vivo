@@ -43,7 +43,7 @@ concurrency:
 jobs:
   live:
     runs-on: ubuntu-latest
-    timeout-minutes: 9
+    timeout-minutes: 65
     permissions:
       contents: read
       actions: write   # para disparar a execução seguinte

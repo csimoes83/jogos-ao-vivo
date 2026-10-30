@@ -154,7 +154,8 @@ def parse_feed(raw):
                 k, v = item.split("÷", 1)
                 kv[k] = v
         if "AA" in kv and "AB" in kv:
-            out[kv["AA"]] = {"ab": kv["AB"], "ac": kv.get("AC"), "h": _int(kv.get("AG")), "a": _int(kv.get("AH"))}
+            out[kv["AA"]] = {"ab": kv["AB"], "ac": kv.get("AC"), "h": _int(kv.get("AG")), "a": _int(kv.get("AH")),
+                             "home": kv.get("AE"), "away": kv.get("AF")}
     return out
 
 
@@ -640,6 +641,9 @@ def main():
                 if not probe and not args.ignore_window and not (m["ko_utc"] - PREFILTER <= now <= m["ko_utc"] + PREFILTER):
                     continue
                 fs = classify_fs(feed.get(m["fs"])) if feed is not None else None
+                ent = feed.get(m["fs"]) if feed else None
+                if ent and ent.get("home"):  # equipas como o Flashscore as escreve, para conferir a ligação ao jogo
+                    log(f"{tag}: ligado ao Flashscore como {ent['home']} – {ent['away']}", key=("fsnames", m["id"]))
                 rf = None
                 if m.get("rfef"):
                     hit = rf_cache.get(m["id"])

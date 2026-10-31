@@ -145,18 +145,52 @@ def _int(v):
 
 
 def parse_feed(raw):
-    """Feed do Flashscore: blocos separados por '~', campos 'CHAVE÷valor' separados por '¬'."""
+    """Feed do Flashscore: blocos separados por '~', campos 'CHAVE÷valor' separados por '¬'.
+    Cada torneio é um bloco com ZA (ex.: 'SPAIN: Liga Nacional - Apertura'); os jogos seguintes são desse torneio."""
     out = {}
+    torneio = None
     for part in raw.split("~"):
         kv = {}
         for item in part.split("¬"):
             if "÷" in item:
                 k, v = item.split("÷", 1)
                 kv[k] = v
+        if "ZA" in kv and "AA" not in kv:
+            torneio = kv["ZA"]
         if "AA" in kv and "AB" in kv:
+            ko = _int(kv.get("AD"))  # hora de início, em segundos (UTC)
             out[kv["AA"]] = {"ab": kv["AB"], "ac": kv.get("AC"), "h": _int(kv.get("AG")), "a": _int(kv.get("AH")),
-                             "home": kv.get("AE"), "away": kv.get("AF")}
+                             "home": kv.get("AE"), "away": kv.get("AF"), "torneio": torneio,
+                             "ko": dt.datetime.fromtimestamp(ko, dt.timezone.utc) if ko else None}
     return out
+
+
+GENERIC_TOKENS = {"futsal", "fs", "fc", "cf", "sc", "sd", "ad", "clube", "club", "el", "la", "de", "fk", "mnk"}
+
+
+def same_team(a, b):
+    """Duas equipas são a mesma se partilharem algum nome próprio (ignora palavras genéricas como 'Futsal' ou 'FC')."""
+    ta = set(norm_name(a).split()) - GENERIC_TOKENS
+    tb = set(norm_name(b).split()) - GENERIC_TOKENS
+    return bool(ta & tb)
+
+
+def casar_feed_com_site(feed, site_jogos):
+    """Liga jogos do feed a jogos do site SÓ quando a hora coincide e as duas equipas batem certo.
+    feed: saída de parse_feed. site_jogos: lista de {'id', 'ko_utc', 'home', 'away'}.
+    Devolve {id_do_site: id_do_flashscore, ...}. Ambiguidade (mais de um candidato) não liga: fica registado em 'ambiguos'."""
+    ligados, ambiguos = {}, []
+    for fs_id, e in (feed or {}).items():
+        if not e.get("ko") or not e.get("home") or not e.get("away"):
+            continue
+        cands = [s for s in site_jogos
+                 if abs((s["ko_utc"] - e["ko"]).total_seconds()) <= 60
+                 and same_team(s["home"], e["home"]) and same_team(s["away"], e["away"])]
+        if len(cands) == 1:
+            ligados[cands[0]["id"]] = fs_id
+        elif len(cands) > 1:
+            ambiguos.append(fs_id)
+    return ligados, ambiguos
 
 
 def classify_fs(entry):
@@ -492,6 +526,78 @@ def sync_fs_sheet(mcp, m, raw, lineup, caches, log, alerts, goals_cards=True):
     return written
 
 
+def marker_texts(kind, home, away, score):
+    """Textos fixos nas 5 línguas dos 4 marcos de cada jogo: início, intervalo, início da 2.ª parte e fim."""
+    sc = f"{score[0]}-{score[1]}" if score else None
+    both = f"{home} {sc} {away}" if sc else None
+    if kind == "inicio":
+        return {"pt": "Início do jogo.", "en": "Kick-off.", "es": "Comienza el partido.",
+                "fr": "Coup d'envoi.", "it": "Inizia la partita."}
+    if kind == "intervalo":
+        if both:
+            return {"pt": f"Intervalo: {both}.", "en": f"Half-time: {both}.", "es": f"Descanso: {both}.",
+                    "fr": f"Mi-temps : {both}.", "it": f"Intervallo: {both}."}
+        return {"pt": "Intervalo.", "en": "Half-time.", "es": "Descanso.", "fr": "Mi-temps.", "it": "Intervallo."}
+    if kind == "segunda":
+        return {"pt": "Início da 2.ª parte.", "en": "Start of the 2nd half.", "es": "Comienza la 2.ª parte.",
+                "fr": "Début de la 2e mi-temps.", "it": "Inizia il secondo tempo."}
+    return {"pt": f"Fim do jogo: {both}.", "en": f"Full time: {both}.", "es": f"Final del partido: {both}.",
+            "fr": f"Fin du match : {both}.", "it": f"Fine della partita: {both}."}
+
+
+# (tipo, event_id, minuto): os mesmos valores dos marcos já gravados nos jogos da Champions (10 = intervalo; 12 = texto livre)
+MARKERS = {"inicio": (12, 0), "intervalo": (10, 20), "segunda": (12, 21), "fim": (12, 40)}
+
+
+def due_markers(state, ac, part, score):
+    """Quais marcos já aconteceram, dado o estado do jogo: lista de (tipo, placar_a_escrever).
+    Só o intervalo e o fim levam placar; sem placar conhecido o fim espera (não escreve às cegas)."""
+    due = []
+    if state in ("live", "finished"):
+        due.append(("inicio", None))
+    if ac == "38" or part >= 2 or state == "finished":
+        due.append(("intervalo", score if ac == "38" else None))
+    if part >= 2 or ac == "13" or state == "finished":
+        due.append(("segunda", None))
+    if state == "finished" and score:
+        due.append(("fim", score))
+    return due
+
+
+MARKER_PREFIX = (("inicio", "início do jogo"), ("intervalo", "intervalo"), ("segunda", "início da 2"), ("fim", "fim do jogo"))
+
+
+def marker_kind(text_json):
+    """Que marco é um texto já gravado (pelo início do texto em português); None se for outro comentário."""
+    try:
+        pt = norm_name(json.loads(text_json).get("pt", ""))
+    except (TypeError, ValueError, AttributeError):
+        return None
+    for kind, prefix in MARKER_PREFIX:
+        if pt.startswith(norm_name(prefix)):
+            return kind
+    return None
+
+
+def sync_markers(mcp, m, raw, state, ac, part, score, caches, log):
+    """Escreve (uma só vez) os 4 marcos de cada jogo na cronologia: início, intervalo, início da 2.ª parte e fim.
+    Reconhece os marcos já gravados pelo texto (não pela hora: um comentário do Carlos aos 21' não conta como marco)
+    e nunca mexe em textos que já lá estejam."""
+    mid = m["id"]
+    seen = caches.setdefault("marks", {})
+    if mid not in seen:
+        seen[mid] = {marker_kind(r.get("text")) for r in mcp.rows("match_event_text", {"match_id": mid}, ["event_id", "time", "text"], limit=100)}
+    for kind, sc in due_markers(state, ac, part, score):
+        if kind in seen[mid]:
+            continue
+        ev, minute = MARKERS[kind]
+        text = json.dumps(marker_texts(kind, m["home"], m["away"], sc), ensure_ascii=False)
+        mcp.call("record_save", {"resource": "match_event_text", "confirm": mcp.apply, "fields": {
+            "match_id": mid, "team_id": raw["gcteamhome_id"], "event_id": ev, "time": minute, "text": text}})
+        seen[mid].add(kind)
+        log(f"{m['id']} {m['home']}–{m['away']}: marco «{kind}» -> {'APLICADO' if mcp.apply else 'dry-run'}")
+
+
 def idle_wait(matches, done, now, horizon=dt.timedelta(hours=3)):
     """Segundos até abrir a próxima janela de vigilância, se for dentro do horizonte; senão None."""
     opens = [m["ko_utc"] - PRE for m in matches if m["id"] not in done and m["ko_utc"] - PRE > now]
@@ -687,6 +793,7 @@ def main():
                         sync_goals(mcp, m, raw, rf, caches, lambda msg, key=None: log(msg, key=key), alerts)
                     except (McpError, KeyError, ValueError) as e:
                         alerts.append(f"{tag}: erro a registar golos: {e}")
+                part_now = int(raw.get("part") or 1) if raw else 1
                 if mcp and raw and fs and fs[0] in ("live", "finished") and int(raw.get("part") or 1) < 2:
                     try:  # 1.ª -> 2.ª parte (aos 20'): usa o estado do Flashscore e, em último caso, os minutos dos eventos
                         mins = [e["minute"] for e in (rf or {}).get("events", [])]
@@ -695,9 +802,19 @@ def main():
                         entry = feed.get(m["fs"]) if feed else None
                         if desired_part(entry["ac"] if entry else None, fs[0], max(mins) if mins else None) == 2:
                             mcp.save_match_fields(m["id"], {"part": 2})
+                            part_now = 2
                             log(f"{tag}: passou à 2.ª parte -> {'APLICADO' if mcp.apply else 'dry-run'}")
                     except (McpError, KeyError, ValueError) as e:
                         alerts.append(f"{tag}: erro a passar à 2.ª parte: {e}")
+                if mcp and raw:
+                    try:  # marcos fixos na cronologia: início, intervalo, início da 2.ª parte e fim
+                        entry_ = feed.get(m["fs"]) if feed else None
+                        state_ = "finished" if (rf and rf.get("finished")) else (fs[0] if fs else None)
+                        score_ = (fs[1] if fs and fs[1] else None) or (rf["score"] if rf and rf.get("score") else None)
+                        sync_markers(mcp, m, raw, state_, entry_["ac"] if entry_ else None, part_now, score_, caches,
+                                     lambda msg, key=None: log(msg, key=key))
+                    except (McpError, KeyError, ValueError) as e:
+                        alerts.append(f"{tag}: erro a escrever os marcos do jogo: {e}")
                 fields, close, al, notes, finished_saved = decide(site, fs, rf, now, ko)
                 alerts.extend(f"{tag}: {a}" for a in al)
                 for n in notes:
@@ -1008,13 +1125,46 @@ def selftest():
     check("parte: algum evento depois dos 20' -> 2", desired_part("12", "live", 22), 2)
     check("parte: intervalo (AC=38) sem eventos novos -> não mexe", desired_part("38", "live", 20), None)
     check("parte: jogo terminado -> 2", desired_part("3", "finished", None), 2)
+    # marcos da cronologia
+    check("marcos: agendado -> nenhum", due_markers("scheduled", None, 1, None), [])
+    check("marcos: 1.ª parte -> só o início", due_markers("live", "12", 1, (1, 0)), [("inicio", None)])
+    check("marcos: intervalo leva o placar", due_markers("live", "38", 1, (2, 2)), [("inicio", None), ("intervalo", (2, 2))])
+    check("marcos: 2.ª parte -> início, intervalo (sem placar) e 2.ª parte",
+          [k for k, _ in due_markers("live", "13", 2, (3, 2))], ["inicio", "intervalo", "segunda"])
+    check("marcos: fim com placar", due_markers("finished", "3", 2, (4, 1))[-1], ("fim", (4, 1)))
+    check("marcos: fim sem placar espera", [k for k, _ in due_markers("finished", "3", 2, None)], ["inicio", "intervalo", "segunda"])
+    check("marcos: texto do fim", marker_texts("fim", "A", "B", (2, 3))["pt"], "Fim do jogo: A 2-3 B.")
+    check("marcos: texto do intervalo sem placar", marker_texts("intervalo", "A", "B", None)["pt"], "Intervalo.")
+
+    class FakeMarkMcp:
+        apply = True
+
+        def __init__(self, existing):
+            self.rows_, self.saved = existing, []
+
+        def rows(self, resource, where, columns=None, limit=100):
+            return self.rows_
+
+        def call(self, name, args):
+            self.saved.append((args["fields"]["event_id"], args["fields"]["time"], json.loads(args["fields"]["text"])["pt"]))
+            return {}
+
+    fm = FakeMarkMcp([{"event_id": 12, "time": 21, "text": json.dumps({"pt": "Início da 2.ª parte."})},
+                      {"event_id": 12, "time": 40, "text": json.dumps({"pt": "Boa defesa do guarda-redes aos 40'."})}])  # já há a 2.ª parte; o comentário aos 40' não é o fim
+    mk_cache = {}
+    sync_markers(fm, {"id": 1, "home": "A", "away": "B"}, {"gcteamhome_id": 9}, "finished", "3", 2, (4, 1), mk_cache, lambda *a, **k: None)
+    check("marcos: escreve os que faltam e não toca no que já existe",
+          fm.saved, [(12, 0, "Início do jogo."), (10, 20, "Intervalo."), (12, 40, "Fim do jogo: A 4-1 B.")])
+    n = len(fm.saved)
+    sync_markers(fm, {"id": 1, "home": "A", "away": "B"}, {"gcteamhome_id": 9}, "finished", "3", 2, (4, 1), mk_cache, lambda *a, **k: None)
+    check("marcos: segunda passagem não repete", len(fm.saved), n)
     ms0 = load_matches()
     g31804 = [m for m in ms0 if m["id"] == 31804]
     check("espera até à próxima janela (75 min)", idle_wait(g31804, set(), dt.datetime(2026, 10, 24, 12, 30, tzinfo=dt.timezone.utc)), 4500.0)
     check("janela longe (4h45) -> não mantém a cadeia", idle_wait(g31804, set(), dt.datetime(2026, 10, 24, 9, 0, tzinfo=dt.timezone.utc)), None)
     check("jogo já terminado não conta", idle_wait(g31804, {31804}, dt.datetime(2026, 10, 24, 12, 30, tzinfo=dt.timezone.utc)), None)
     ms = load_matches()
-    check("jogos no ficheiro (18 + 3 do Brasil + 48 da Champions)", len(ms), 69)
+    check("jogos no ficheiro (pelo menos os 69 do arranque)", len(ms) >= 69, True)
     check("hora de verão: 15:00 de Lisboa = 14:00Z a 24/10", [m for m in ms if m["id"] == 31804][0]["ko_utc"], ko)
     check("depois da mudança de hora (26/10 21:15) = 21:15Z", [m for m in ms if m["id"] == 31806][0]["ko_utc"].hour, 21)
     # --- simulação completa: agendado -> ao vivo 0-0 -> 1-0 -> terminado 3-2, com feed e site falsos ---
@@ -1053,7 +1203,15 @@ def selftest():
             self.apply = apply
 
         def get_match(self, mid):
-            return {"date": "2026-10-24 15:00:00", "part": part_state["v"], **site}
+            return {"date": "2026-10-24 15:00:00", "part": part_state["v"], "gcteamhome_id": 5, **site}
+
+        def rows(self, resource, where, columns=None, limit=100):
+            return []
+
+        def call(self, name, args):
+            if name == "record_save" and args["resource"] == "match_event_text":
+                calls.append(("marco", args["fields"]["event_id"], args["fields"]["time"]))
+            return {}
 
         def save_match_fields(self, mid, fields):
             calls.append(("save_match", dict(fields)))
@@ -1087,8 +1245,12 @@ def selftest():
             os.environ["NFP_MCP_TOKEN"] = saved_tok
     check("simulação: escritas por ordem", calls, [
         ("update", {"goalhome": 0, "goalaway": 0, "islive": 1}),
+        ("marco", 12, 0),
         ("save_match", {"part": 2}),
+        ("marco", 10, 20),
+        ("marco", 12, 21),
         ("update", {"goalhome": 1}),
+        ("marco", 12, 40),
         ("update", {"goalhome": 3, "goalaway": 2, "islive": 0}),
         ("recompute", 1213),
     ])

@@ -1,0 +1,41 @@
+name: descobrir jogos
+
+# Duas vezes por dia procura no site os jogos dos próximos dias e liga-os ao Flashscore (matches.json), para o operador (live.yml)
+# os pôr ao vivo sem ninguém ter de os acrescentar à mão. Só acrescenta jogos que já existem no site; nunca cria nenhum.
+on:
+  schedule:
+    - cron: '17 5 * * *'
+    - cron: '17 14 * * *'
+  workflow_dispatch:
+    inputs:
+      dias:
+        description: 'quantos dias à frente'
+        default: '3'
+
+concurrency:
+  group: descobrir
+  cancel-in-progress: false
+
+jobs:
+  descobrir:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Procurar jogos novos
+        id: d
+        env:
+          NFP_MCP_TOKEN: ${{ secrets.NFP_MCP_TOKEN }}
+          DIAS: ${{ github.event.inputs.dias || '3' }}
+        run: python3 -I descobrir.py --dias "$DIAS"
+      - name: Gravar na lista
+        if: steps.d.outputs.novos != '' && steps.d.outputs.novos != '0'
+        run: |
+          git config user.name "descobrir jogos"
+          git config user.email "actions@users.noreply.github.com"
+          git add matches.json
+          git commit -m "jogos: descoberta diária (+${{ steps.d.outputs.novos }})"
+          git pull --rebase origin "$GITHUB_REF_NAME"
+          git push origin "HEAD:$GITHUB_REF_NAME"

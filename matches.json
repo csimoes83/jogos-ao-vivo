@@ -683,6 +683,78 @@
       "away": "Polónia",
       "comp": 2776,
       "fs": "2Dyh7mWP"
+    },
+    {
+      "id": 63472,
+      "ko": "2026-11-14T12:00",
+      "home": "ElPozo Murcia",
+      "away": "FC Barcelona",
+      "comp": 2758,
+      "fs": "4rFEhE25"
+    },
+    {
+      "id": 31809,
+      "ko": "2026-11-14T15:00",
+      "home": "FC Famalicão",
+      "away": "Portimonense SC",
+      "comp": 1213,
+      "fs": "GCetmi46"
+    },
+    {
+      "id": 57999,
+      "ko": "2026-11-14T16:00",
+      "home": "GD Árvore",
+      "away": "Leões de Porto Salvo",
+      "comp": 1923,
+      "fs": "YFtr9cbL"
+    },
+    {
+      "id": 63473,
+      "ko": "2026-11-14T16:00",
+      "home": "Inter FS",
+      "away": "Osasuna Magna Xota FS",
+      "comp": 2758,
+      "fs": "MyusvFmC"
+    },
+    {
+      "id": 58000,
+      "ko": "2026-11-14T17:00",
+      "home": "Atlético Clube de Portugal",
+      "away": "Novasemente/Cavalinho",
+      "comp": 1923,
+      "fs": "KhjlmGy2"
+    },
+    {
+      "id": 63474,
+      "ko": "2026-11-14T17:45",
+      "home": "Quesos El Higaldo Manzanares FS",
+      "away": "Viña Albali Valdepeñas",
+      "comp": 2758,
+      "fs": "fkwkxgIO"
+    },
+    {
+      "id": 58001,
+      "ko": "2026-11-14T18:00",
+      "home": "Santa Luzia FC",
+      "away": "GCR Nun’Álvares",
+      "comp": 1923,
+      "fs": "nuhtkx7k"
+    },
+    {
+      "id": 58002,
+      "ko": "2026-11-14T18:00",
+      "home": "Futsal Feijó/Metaseguros",
+      "away": "SCU Torreense",
+      "comp": 1923,
+      "fs": "UoSD3yMr"
+    },
+    {
+      "id": 63475,
+      "ko": "2026-11-14T19:30",
+      "home": "O Parrulo Ferrol",
+      "away": "Peñíscola FS",
+      "comp": 2758,
+      "fs": "WUG6fzYh"
     }
   ]
 }

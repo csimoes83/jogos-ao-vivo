@@ -546,7 +546,7 @@ def marker_texts(kind, home, away, score):
 
 
 # (tipo, event_id, minuto): os mesmos valores dos marcos já gravados nos jogos da Champions (10 = intervalo; 12 = texto livre)
-MARKERS = {"inicio": (12, 0), "intervalo": (10, 20), "segunda": (12, 21), "fim": (12, 40)}
+MARKERS = {"inicio": (12, 1), "intervalo": (10, 20), "segunda": (12, 21), "fim": (12, 40)}
 
 
 def due_markers(state, ac, part, score):
@@ -1154,7 +1154,7 @@ def selftest():
     mk_cache = {}
     sync_markers(fm, {"id": 1, "home": "A", "away": "B"}, {"gcteamhome_id": 9}, "finished", "3", 2, (4, 1), mk_cache, lambda *a, **k: None)
     check("marcos: escreve os que faltam e não toca no que já existe",
-          fm.saved, [(12, 0, "Início do jogo."), (10, 20, "Intervalo."), (12, 40, "Fim do jogo: A 4-1 B.")])
+          fm.saved, [(12, 1, "Início do jogo."), (10, 20, "Intervalo."), (12, 40, "Fim do jogo: A 4-1 B.")])
     n = len(fm.saved)
     sync_markers(fm, {"id": 1, "home": "A", "away": "B"}, {"gcteamhome_id": 9}, "finished", "3", 2, (4, 1), mk_cache, lambda *a, **k: None)
     check("marcos: segunda passagem não repete", len(fm.saved), n)
@@ -1245,7 +1245,7 @@ def selftest():
             os.environ["NFP_MCP_TOKEN"] = saved_tok
     check("simulação: escritas por ordem", calls, [
         ("update", {"goalhome": 0, "goalaway": 0, "islive": 1}),
-        ("marco", 12, 0),
+        ("marco", 12, 1),
         ("save_match", {"part": 2}),
         ("marco", 10, 20),
         ("marco", 12, 21),

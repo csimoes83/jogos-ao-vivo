@@ -42,6 +42,8 @@ EVENT_META = {
     1923: {"season_id": 42, "escalao_id": 2, "main_competition": 27, "main_competition_type": 1},   # Liga Feminina Placard
     2758: {"season_id": 42, "escalao_id": 1, "main_competition": 33, "main_competition_type": 1},   # Liga Prime Futsal
     2763: {"season_id": 42, "escalao_id": 1, "main_competition": 28, "main_competition_type": 1},   # LNF Cresol (Brasil)
+    2885: {"season_id": 42, "escalao_id": 1, "main_competition": 85, "main_competition_type": 2},   # Copa Intercontinental - Grupo A
+    2886: {"season_id": 42, "escalao_id": 1, "main_competition": 85, "main_competition_type": 2},   # Copa Intercontinental - Grupo B
     # UEFA Futsal Champions League - Ronda Principal (grupos 1 a 8): mesmos valores de save_event no caminho UEFA
     **{g: {"season_id": 42, "escalao_id": 1, "main_competition": 57, "main_competition_type": 2} for g in range(2747, 2755)},
 }

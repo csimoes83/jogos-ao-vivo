@@ -366,7 +366,15 @@ def sync_goals(mcp, m, raw, rf, caches, log, alerts):
     if not meta:
         alerts.append(f"{m['id']}: competição {comp} sem campos de época configurados; golos não registados")
         return 0
-    have = {(r["person_id"], r["time"]) for r in mcp.rows("match_event", {"match_id": m["id"], "event_id": 6}, ["person_id", "time"])}
+    have_rows = mcp.rows("match_event", {"match_id": m["id"], "event_id": 6}, ["person_id", "time", "team_id"])
+    have = {(r["person_id"], r["time"]) for r in have_rows}
+    have_team = {}   # golos já na ficha por equipa (venham de onde vierem)
+    for r in have_rows:
+        have_team[r.get("team_id")] = have_team.get(r.get("team_id"), 0) + 1
+    fs_team = {}     # golos do feed por equipa
+    for e in goals:
+        t_ = raw["gcteamhome_id"] if e["side"] == "home" else raw["gcteamaway_id"]
+        fs_team[t_] = fs_team.get(t_, 0) + 1
     written = 0
     for e in goals:
         team = raw["gcteamhome_id"] if e["side"] == "home" else raw["gcteamaway_id"]
@@ -383,6 +391,8 @@ def sync_goals(mcp, m, raw, rf, caches, log, alerts):
             caches["person"][key] = pid
         pid = caches["person"][key]
         if pid is None:
+            if str(e["pid"]).startswith("fs:") and have_team.get(team, 0) >= fs_team.get(team, 0):
+                continue   # a ficha já tem tantos golos desta equipa como o Flashscore (registados à mão ou pelo alinhamento): nada a avisar
             alerts.append(f"{m['id']}: golo de {e['name']} aos {e['minute']}' sem jogador certo no site ({e['pid']}): não registei")
             continue
         if (pid, e["minute"]) in have:

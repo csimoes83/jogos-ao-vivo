@@ -859,6 +859,46 @@
       "away": "O Parrulo Ferrol",
       "comp": 2758,
       "fs": "ShEo7DHb"
+    },
+    {
+      "id": 63482,
+      "ko": "2026-11-21T12:00",
+      "home": "Viña Albali Valdepeñas",
+      "away": "Noia Portus Apostoli",
+      "comp": 2758,
+      "fs": "I51Xc9vo"
+    },
+    {
+      "id": 31815,
+      "ko": "2026-11-21T16:00",
+      "home": "Portimonense SC",
+      "away": "Eléctrico FC",
+      "comp": 1213,
+      "fs": "dQFhsMXp"
+    },
+    {
+      "id": 31817,
+      "ko": "2026-11-21T16:00",
+      "home": "Leões de Porto Salvo",
+      "away": "Rio Ave FC",
+      "comp": 1213,
+      "fs": "dp6n33f4"
+    },
+    {
+      "id": 31818,
+      "ko": "2026-11-21T17:00",
+      "home": "AD Fundão",
+      "away": "SCU Torreense",
+      "comp": 1213,
+      "fs": "4A9f1sPG"
+    },
+    {
+      "id": 31814,
+      "ko": "2026-11-21T19:00",
+      "home": "UP Venda Nova",
+      "away": "SC Braga",
+      "comp": 1213,
+      "fs": "0tFNnrAN"
     }
   ]
 }

@@ -899,6 +899,30 @@
       "away": "SC Braga",
       "comp": 1213,
       "fs": "0tFNnrAN"
+    },
+    {
+      "id": 63484,
+      "ko": "2026-11-21T17:00",
+      "home": "Sur Seeds El Ejido Futsal",
+      "away": "Industrias Santa Coloma",
+      "comp": 2758,
+      "fs": "KSAw9Znn"
+    },
+    {
+      "id": 63483,
+      "ko": "2026-11-21T19:00",
+      "home": "Wanapix AD Sala 10 Zaragoza",
+      "away": "Quesos El Higaldo Manzanares FS",
+      "comp": 2758,
+      "fs": "pCgJLCWi"
+    },
+    {
+      "id": 63485,
+      "ko": "2026-11-22T19:30",
+      "home": "Jimbee Cartagena FS",
+      "away": "Jaén Paraíso Interior",
+      "comp": 2758,
+      "fs": "4GzUlW1U"
     }
   ]
 }

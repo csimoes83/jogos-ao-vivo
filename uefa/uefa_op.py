@@ -585,9 +585,11 @@ class Operador:
             if ficha and upid not in ficha:
                 self.log(f"{tag}: {kind} de {upid} fora da ficha da UEFA — VER À MÃO", key=("fora", mid, upid, kind))
                 continue
-            if upid not in est["pessoas"]:
-                est["pessoas"][upid] = self.mcp.person_by_external("uefa", upid)
-            pid = est["pessoas"][upid]
+            pid = est["pessoas"].get(upid)
+            if not pid:       # só se guarda quem já está ligado: se o Mac ligar o jogador a meio, o passo seguinte já o encontra
+                pid = self.mcp.person_by_external("uefa", upid)
+                if pid:
+                    est["pessoas"][upid] = pid
             if not pid:
                 self.log(f"{tag}: {kind} aos {sorted(mins)}' sem ligação certa ao jogador (UEFA {upid}) — VER À MÃO (a ficha completa vem do Mac)", key=("sem-lig", mid, upid, kind))
                 continue

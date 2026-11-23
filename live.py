@@ -46,6 +46,8 @@ EVENT_META = {
     2886: {"season_id": 42, "escalao_id": 1, "main_competition": 85, "main_competition_type": 2},   # Copa Intercontinental - Grupo B
     # UEFA Futsal Champions League - Ronda Principal (grupos 1 a 8): mesmos valores de save_event no caminho UEFA
     **{g: {"season_id": 42, "escalao_id": 1, "main_competition": 57, "main_competition_type": 2} for g in range(2747, 2755)},
+    # UEFA Futsal Champions League - Eliminatórias (oitavos, quartos...): só pelo operador nativo da UEFA (uefa/uefa_op.py), nunca pelo Flashscore
+    2853: {"season_id": 42, "escalao_id": 1, "main_competition": 57, "main_competition_type": 2},
 }
 PREFILTER = dt.timedelta(hours=12)      # só pergunta ao site por jogos perto da hora prevista
 
@@ -110,8 +112,10 @@ class Mcp:
         except urllib.error.HTTPError as e:
             raise McpError(f"HTTP {e.code} em tools/list: {e.read().decode('utf-8', 'replace')[:200]}")
 
-    def rows(self, resource, where, columns=None, limit=100):
+    def rows(self, resource, where, columns=None, limit=100, offset=0):
         a = {"resource": resource, "where": where, "limit": limit}
+        if offset:
+            a["offset"] = offset
         if columns:
             a["columns"] = columns
         return self.call("records_list", a).get("rows", [])
@@ -330,10 +334,14 @@ def decide(site, fs, rf, now, ko):
 
 # ----------------------------------------------------------------------------- execução
 
-def load_matches():
+def load_doc():
     here = os.path.dirname(os.path.abspath(__file__))
     with open(os.path.join(here, "matches.json"), encoding="utf-8") as f:
-        ms = json.load(f)["matches"]
+        return json.load(f)
+
+
+def load_matches():
+    ms = load_doc()["matches"]
     for m in ms:
         m["ko_utc"] = dt.datetime.fromisoformat(m["ko"]).replace(tzinfo=LISBON).astimezone(dt.timezone.utc)
     return ms
@@ -670,6 +678,50 @@ def uefa_sync(mcp, ids, log):
             log(f"UEFA {mid}: gravado {e['type']} aos {e['minute']}' ({pid})")
 
 
+def uefa_desde(m, padrao):
+    """Instante a partir do qual o operador da UEFA pode atuar neste jogo (uefa_from_utc do jogo ou o padrão do matches.json); None = desligado."""
+    v = m.get("uefa_from_utc") or padrao
+    try:
+        t = dt.datetime.fromisoformat(str(v).replace("Z", "+00:00")) if v else None
+    except ValueError:
+        return None
+    return t if t is None or t.tzinfo else t.replace(tzinfo=dt.timezone.utc)
+
+
+def uefa_pass(uop, cand_uefa, now, args, probe, padrao, done, to_recompute, log):
+    """Um passo do operador da UEFA a cada jogo com o campo «uefa». Devolve quantos jogos ainda ficam em vigilância.
+    Só atua se o interruptor (uefa_from_utc) já abriu e o jogo está na janela horária; em probe só lê e diz o que veria."""
+    import importlib
+    uefa_op = importlib.import_module("uefa_op")
+    remaining = 0
+    for m in cand_uefa:
+        if m["id"] in done and not probe:
+            continue
+        tag = f"{m['id']} {m['home']}–{m['away']}"
+        aberto = uefa_op.ativo(m, padrao, now) or (args.ignore_window and args.mode != "run")   # em run o interruptor nunca se ignora
+        if not probe:
+            if not aberto:
+                log(f"{tag}: operador da UEFA desligado para este jogo (uefa_from_utc {m.get('uefa_from_utc') or padrao or 'em falta'}); não toco", key=("uefa-off", m["id"]))
+                continue
+            if not (args.ignore_window or m["ko_utc"] - PRE <= now <= m["ko_utc"] + POST):
+                continue
+        else:
+            log(f"{tag}: operador da UEFA {'ligado' if uefa_op.ativo(m, padrao, now) else 'DESLIGADO (uefa_from_utc ' + str(m.get('uefa_from_utc') or padrao or 'em falta') + ')'}", key=("uefa-sw", m["id"]))
+        try:
+            r = uop.passo(m, now)
+        except Exception as e:  # noqa: BLE001 - nada da UEFA pode derrubar a vigilância dos outros jogos
+            uop.alerts.append(f"{tag}: erro no operador da UEFA: {e}")
+            remaining += 1
+            continue
+        if r.get("recompute"):
+            to_recompute[r["recompute"]] = tag
+        if r.get("vigiar"):
+            remaining += 1
+        elif not probe:
+            done.add(m["id"])
+    return remaining
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--mode", choices=["probe", "dry", "run", "check"], default="run")
@@ -704,10 +756,13 @@ def main():
     probe = args.mode == "probe"
     now = utcnow()
     matches = [m for m in load_matches() if (only is None or m["id"] in only)]
+    uefa_padrao = load_doc().get("uefa_from_utc_default")   # interruptor do operador da UEFA (ver uefa/uefa_op.py)
     if probe or args.ignore_window:
         cand = matches
     else:
         cand = [m for m in matches if m["ko_utc"] - PREFILTER <= now <= m["ko_utc"] + PREFILTER]
+    cand_fs = [m for m in cand if not m.get("uefa")]      # Flashscore (+ RFEF) como até aqui
+    cand_uefa = [m for m in cand if m.get("uefa")]        # jogos seguidos só pela API da UEFA (Champions: eliminatórias)
     lines, alerts = [], []
     done, last_msg, rf_cache = set(), {}, {}
     caches = {"meta": {}, "person": {}, "squad": {}, "squad3": {}, "fsplayer": {}}
@@ -736,6 +791,15 @@ def main():
         if not probe:
             return finish(args, now, lines, alerts, hard=True)
 
+    uop = None
+    if cand_uefa:
+        try:   # carregado só quando há jogos da UEFA: um erro aqui nunca pode afetar o resto da vigilância
+            sys.path.insert(0, UEFA_DIR)
+            import uefa_op
+            uop = uefa_op.Operador(mcp, lambda msg, key=None: log(msg, key=key), alerts, EVENT_META, apply=(args.mode == "run"), probe=probe)
+        except Exception as e:  # noqa: BLE001
+            alerts.append(f"operador da UEFA indisponível: {e}")
+
     def one_pass(now):
         """Uma verificação a todos os jogos em vigilância. Devolve quantos ainda ficam em vigilância."""
         cur[0] = now
@@ -744,14 +808,15 @@ def main():
         try:
             feed = {}
             # dias do feed: ontem, hoje, amanhã e os dias dos jogos em vigilância (a Champions vai até 31/10)
-            days = {-1, 0, 1} | {(m["ko_utc"].astimezone(LISBON).date() - now.astimezone(LISBON).date()).days for m in cand}
-            for d in sorted(days):
-                feed.update(parse_feed(http_get(FS_FEED.format(d=d) + f"?t={int(time.time() * 1000)}", FS_HEADERS)))
+            days = {-1, 0, 1} | {(m["ko_utc"].astimezone(LISBON).date() - now.astimezone(LISBON).date()).days for m in cand_fs}
+            if cand_fs:
+                for d in sorted(days):
+                    feed.update(parse_feed(http_get(FS_FEED.format(d=d) + f"?t={int(time.time() * 1000)}", FS_HEADERS)))
         except Exception as e:  # noqa: BLE001
             alerts.append(f"feed do Flashscore indisponível: {e}")
             feed = None
         to_recompute = {}
-        for m in cand:
+        for m in cand_fs:
             if m["id"] in done and not probe:
                 continue
             tag = f"{m['id']} {m['home']}–{m['away']}"
@@ -852,6 +917,8 @@ def main():
             except (McpError, RuntimeError, KeyError, ValueError) as e:
                 alerts.append(f"{tag}: erro: {e}")
                 remaining += 1
+        if uop is not None:
+            remaining += uefa_pass(uop, cand_uefa, now, args, probe, uefa_padrao, done, to_recompute, log)
         for comp, tag in to_recompute.items():
             try:
                 mcp.recompute(comp)
@@ -860,7 +927,7 @@ def main():
                 alerts.append(f"competição {comp}: não consegui recalcular a classificação ({e}); fazer à mão")
         if mcp is not None and args.mode == "run" and now.timestamp() - uefa_last[0] >= 60:
             uefa_last[0] = now.timestamp()
-            ids = [m["id"] for m in cand if str(m["id"]) in json.load(open(os.path.join(UEFA_DIR, "mapa.json"), encoding="utf-8"))["jogos"]]
+            ids = [m["id"] for m in cand_fs if str(m["id"]) in json.load(open(os.path.join(UEFA_DIR, "mapa.json"), encoding="utf-8"))["jogos"]]
             if ids:
                 try:
                     uefa_sync(mcp, ids, log)
@@ -883,7 +950,8 @@ def main():
     keepalive = remaining > 0
     if not keepalive and args.mode == "run" and args.loop_seconds > 0:
         # sem jogos agora, mas o próximo abre dentro de 3 h: dorme (sem gastar pedidos) e mantém a cadeia viva até lá
-        wait = idle_wait(matches, done, utcnow())
+        wait = idle_wait([m for m in matches if not m.get("uefa") or (uefa_desde(m, uefa_padrao) or dt.datetime.max.replace(tzinfo=dt.timezone.utc)) <= utcnow() + dt.timedelta(hours=3)],
+                         done, utcnow())
         if wait is not None:
             nap = max(1, min(wait, args.loop_seconds))
             log(f"sem jogos em vigilância; o próximo abre dentro de {wait / 60:.0f} min: espero {nap / 60:.1f} min e mantenho a cadeia")
@@ -1268,6 +1336,66 @@ def selftest():
     ])
     check("simulação: estado final no site", site, {"goalhome": 3, "goalaway": 2, "islive": 0})
     check("simulação: termina sozinha, sem alertas", (rc, "0 jogo(s) ainda em vigilância" in buf.getvalue()), (0, True))
+    sys.path.insert(0, UEFA_DIR)
+    import uefa_op
+    uefa_op.selftest(check)
+    # --- o operador da UEFA dentro do live.py (main): interruptor fechado = nada escrito; aberto = jogo seguido só pela UEFA, sem tocar no Flashscore
+    mapa_ = uefa_op.load_mapa()
+    d87 = uefa_op._carrega(2050887)
+    ko87 = dt.datetime.fromisoformat(d87["match"]["kickOffTime"]["dateTime"].replace("Z", "+00:00"))
+    for aberto in (False, True):
+        clock2 = {"t": ko87 - dt.timedelta(minutes=14)}
+        site2 = uefa_op._SiteFalso(66616, 891, 6)
+        entrada = {"id": 66616, "ko": ko87.astimezone(LISBON).strftime("%Y-%m-%dT%H:%M"), "home": "Kauno Žalgiris", "away": "SL Benfica", "comp": 2853, "uefa": 2050887,
+                   "uefa_from_utc": "2026-11-01T00:00:00Z" if aberto else "2099-01-01T00:00:00Z"}
+        g = globals()
+        saved2 = {k: g[k] for k in ("http_get", "Mcp", "NOW_FN", "load_matches", "load_doc")}
+        saved_sleep2, saved_argv2, saved_tok2, saved_fetch2 = time.sleep, sys.argv, os.environ.get("NFP_MCP_TOKEN"), uefa_op.fetch
+
+        def now2():
+            t = clock2["t"]
+            clock2["t"] = t + dt.timedelta(seconds=20)
+            return t
+
+        def fetch2(path):
+            m_, ev_ = uefa_op._foto(d87, clock2["t"], mapa_)
+            return d87["lineups"] if path.endswith("/lineups") else (ev_ if "/events" in path else m_)
+
+        def http_proibido(url, headers=None, tries=2, timeout=20):
+            raise RuntimeError("o jogo da UEFA não pode ir ao Flashscore: " + url)
+
+        def doc2():
+            return {"uefa_from_utc_default": "2099-01-01T00:00:00Z", "matches": [dict(entrada)]}
+
+        def matches2():
+            ms_ = [dict(entrada)]
+            ms_[0]["ko_utc"] = ko87
+            return ms_
+        try:
+            g["http_get"], g["Mcp"], g["NOW_FN"], g["load_matches"], g["load_doc"] = http_proibido, (lambda token, apply: site2), now2, matches2, doc2
+            uefa_op.fetch = fetch2
+            time.sleep = lambda s_: None
+            os.environ["NFP_MCP_TOKEN"] = "x" * 48
+            sys.argv = ["live.py", "--mode", "run", "--loop-seconds", "9000", "--interval", "20"]
+            import io
+            import contextlib
+            buf2 = io.StringIO()
+            with contextlib.redirect_stdout(buf2):
+                rc2 = main()
+        finally:
+            g.update(saved2)
+            time.sleep, sys.argv, uefa_op.fetch = saved_sleep2, saved_argv2, saved_fetch2
+            if saved_tok2 is None:
+                os.environ.pop("NFP_MCP_TOKEN", None)
+            else:
+                os.environ["NFP_MCP_TOKEN"] = saved_tok2
+        if not aberto:
+            check("UEFA no main: interruptor fechado (2099) -> não escreve nada, nem vigia", (site2.writes, "desligado para este jogo" in buf2.getvalue(), rc2), ([], True, 0))
+        else:
+            n_txt = sum(1 for w in site2.writes if w[0] == "texto")
+            check("UEFA no main: interruptor aberto -> escreve (ao vivo, 9 linhas de marcos/golos, marcador final) e fecha com a classificação",
+                  (site2.match["goalhome"], site2.match["goalaway"], site2.match["islive"], site2.recomputed, n_txt >= 9, rc2), (2, 3, 0, [2853], True, 0))
+            check("UEFA no main: acaba sozinho (0 jogos em vigilância) e sem avisos", ("0 jogo(s) ainda em vigilância" in buf2.getvalue(), "::warning::" in buf2.getvalue()), (True, False))
     print("\nTUDO OK" if ok else "\nHÁ FALHAS")
     return 0 if ok else 1
 

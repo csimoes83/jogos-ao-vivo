@@ -21,7 +21,8 @@ COMP = {2746: "UEFA Futsal Champions League - Ronda Preliminar - Grupo A",
         2747: "UEFA Futsal Champions League - Ronda Principal - Grupo 8", 2748: "UEFA Futsal Champions League - Ronda Principal - Grupo 7",
         2749: "UEFA Futsal Champions League - Ronda Principal - Grupo 6", 2750: "UEFA Futsal Champions League - Ronda Principal - Grupo 5",
         2751: "UEFA Futsal Champions League - Ronda Principal - Grupo 4", 2752: "UEFA Futsal Champions League - Ronda Principal - Grupo 3",
-        2753: "UEFA Futsal Champions League - Ronda Principal - Grupo 2", 2754: "UEFA Futsal Champions League - Ronda Principal - Grupo 1"}
+        2753: "UEFA Futsal Champions League - Ronda Principal - Grupo 2", 2754: "UEFA Futsal Champions League - Ronda Principal - Grupo 1",
+        2853: "UEFA Futsal Champions League - Eliminatórias"}
 
 
 def get(path):
@@ -104,11 +105,13 @@ def build(ids):
                     continue
                 pid = str(c["primaryActor"]["person"]["id"])
                 people.setdefault(pid, person(c["primaryActor"]["person"]))
-                kind = {"YELLOW_CARD": "yellow", "RED_CARD": "red", "SECOND_YELLOW_CARD": "second_yellow", "YELLOW_RED_CARD": "second_yellow"}.get(c.get("type"))
+                kind = {"YELLOW_CARD": "yellow", "RED_CARD": "red", "SECOND_YELLOW_CARD": "second_yellow", "YELLOW_RED_CARD": "second_yellow", "YELLOW_CARD_SECOND": "second_yellow", "RED_YELLOW_CARD": "second_yellow"}.get(c.get("type"))
                 if not kind:
                     notes.append(f"{mid}: cartão {c.get('type')} de {pid} — VER À MÃO")
                     continue
-                events.append({"type": kind, "person": pid, "minute": minute(c.get("time"))})
+                ev = {"type": kind, "person": pid, "minute": minute(c.get("time"))}
+                if ev not in events:   # a UEFA publica o 2.º amarelo em dois eventos (SECOND_YELLOW + RED_YELLOW) → 1 só (visto a 29/10 no 63389)
+                    events.append(ev)
             if sheets is None:
                 notes.append(f"{mid}: jogo terminado mas sem escalação — eventos sem ficha, o importador pode recusar")
             n_h = sum(1 for e in events if e["type"] == "goal" and e["person"] in on[hu]) + sum(1 for e in events if e["type"] == "own_goal" and e["person"] in on[au])

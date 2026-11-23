@@ -1,5 +1,6 @@
 {
-  "_nota": "ko = hora de Lisboa (a do site). fs = id do jogo no feed de futsal do Flashscore. rfef = página oficial (só Espanha, confirmação). (Brasil: LNF Cresol - Fase Final, horas de Lisboa.)",
+  "_nota": "ko = hora de Lisboa (a do site). fs = id do jogo no feed de futsal do Flashscore. rfef = página oficial (só Espanha, confirmação). (Brasil: LNF Cresol - Fase Final, horas de Lisboa.) uefa = id do jogo na API da UEFA: o jogo é seguido SÓ pela UEFA (uefa/uefa_op.py), nunca pelo Flashscore. uefa_from_utc = a partir de que instante (UTC) o operador da UEFA pode escrever neste jogo; sem esse campo vale uefa_from_utc_default. 2099 = desligado: para ligar troca-se essa data por uma real (ex.: 2026-11-24T14:00:00Z).",
+  "uefa_from_utc_default": "2099-01-01T00:00:00Z",
   "matches": [
     {
       "id": 63457,
@@ -931,6 +932,79 @@
       "away": "Inter FS",
       "comp": 2758,
       "fs": "zJHg5inB"
+    },
+    {
+      "id": 66611,
+      "ko": "2026-11-24T17:00",
+      "home": "SC Athletic Futsal",
+      "away": "Semey FC",
+      "comp": 2853,
+      "uefa": 2050882,
+      "uefa_from_utc": "2099-01-01T00:00:00Z"
+    },
+    {
+      "id": 66617,
+      "ko": "2026-12-04T17:00",
+      "home": "FC HIT Kiev",
+      "away": "L84 Torino",
+      "comp": 2853,
+      "uefa": 2050888
+    },
+    {
+      "id": 66618,
+      "ko": "2026-12-04T13:30",
+      "home": "FC Stalitsa Minsk",
+      "away": "Futsal Minerva",
+      "comp": 2853,
+      "uefa": 2050889
+    },
+    {
+      "id": 66619,
+      "ko": "2026-12-05T14:00",
+      "home": "Semey FC",
+      "away": "SC Athletic Futsal",
+      "comp": 2853,
+      "uefa": 2050890
+    },
+    {
+      "id": 66620,
+      "ko": "2026-12-04T19:30",
+      "home": "FC Barcelona",
+      "away": "MNK Olmissum",
+      "comp": 2853,
+      "uefa": 2050891
+    },
+    {
+      "id": 66621,
+      "ko": "2026-12-04T19:30",
+      "home": "Royal Sporting Anderlecht Futsal",
+      "away": "ElPozo Murcia",
+      "comp": 2853,
+      "uefa": 2050892
+    },
+    {
+      "id": 66622,
+      "ko": "2026-12-05T20:00",
+      "home": "Sporting CP",
+      "away": "TFK Beitar",
+      "comp": 2853,
+      "uefa": 2050893
+    },
+    {
+      "id": 66623,
+      "ko": "2026-12-04T15:00",
+      "home": "Kairat Almaty",
+      "away": "Piast Gliwice Futsal",
+      "comp": 2853,
+      "uefa": 2050894
+    },
+    {
+      "id": 66624,
+      "ko": "2026-12-04T20:00",
+      "home": "SL Benfica",
+      "away": "Kauno Žalgiris",
+      "comp": 2853,
+      "uefa": 2050895
     }
   ]
 }

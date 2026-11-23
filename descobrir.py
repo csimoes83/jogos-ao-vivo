@@ -25,6 +25,7 @@ COMPETICOES = [26, 45, 43, 40, 1, 3, 27, 46, 44, 41, 2, 48,        # Portugal ma
                28, 35,                                              # Brasil
                57, 76, 30,                                          # Champions, Finalíssima, Masters Futsal Cup
                6, 74, 72, 4, 5, 70, 71, 58, 14]                     # Mundial, Europeu, Copa América
+SO_UEFA = {2853}   # UEFA Futsal Champions League - Eliminatórias: operador nativo da UEFA (uefa/uefa_op.py)
 MESES = {"jan": 1, "fev": 2, "mar": 3, "abr": 4, "mai": 5, "jun": 6, "jul": 7, "ago": 8, "set": 9, "out": 10, "nov": 11, "dez": 12}
 BLOCO = re.compile(r"location\.href='/pt/gamesheet/(\d+)'.{0,1500}?class=\"mct-date\">\s*(\d{1,2})\s+([a-zç]{3})", re.S)
 
@@ -84,6 +85,9 @@ def main():
             continue
         ko = live.site_ko(r["match"])
         if not (agora - dt.timedelta(hours=6) <= ko <= agora + dt.timedelta(days=args.dias + 1)):
+            continue
+        if r["match"]["competition_id"] in SO_UEFA:   # Champions (eliminatórias): só entram à mão em matches.json com o campo «uefa»; o Flashscore nunca lhes mexe
+            print(f"SALTADO  {gid}: competição {r['match']['competition_id']} é seguida só pela UEFA (ver matches.json)")
             continue
         site_jogos.append({"id": gid, "ko_utc": ko, "home": r["home"], "away": r["away"], "comp": r["match"]["competition_id"],
                            "ko_lisboa": ko.astimezone(live.LISBON).strftime("%Y-%m-%dT%H:%M")})

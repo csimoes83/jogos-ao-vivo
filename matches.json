@@ -1005,6 +1005,30 @@
       "away": "Kauno Žalgiris",
       "comp": 2853,
       "uefa": 2050895
+    },
+    {
+      "id": 63487,
+      "ko": "2026-11-27T18:30",
+      "home": "Islas Baleares Palma Futsal",
+      "away": "Viña Albali Valdepeñas",
+      "comp": 2758,
+      "fs": "UuD0L3x9"
+    },
+    {
+      "id": 63488,
+      "ko": "2026-11-27T20:15",
+      "home": "Industrias Santa Coloma",
+      "away": "Osasuna Magna Xota FS",
+      "comp": 2758,
+      "fs": "IPiRJj14"
+    },
+    {
+      "id": 31822,
+      "ko": "2026-11-27T20:30",
+      "home": "FC Famalicão",
+      "away": "Leões de Porto Salvo",
+      "comp": 1213,
+      "fs": "tAgSFtvA"
     }
   ]
 }

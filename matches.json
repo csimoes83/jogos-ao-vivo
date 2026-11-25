@@ -1029,6 +1029,110 @@
       "away": "Leões de Porto Salvo",
       "comp": 1213,
       "fs": "tAgSFtvA"
+    },
+    {
+      "id": 63489,
+      "ko": "2026-11-28T12:00",
+      "home": "Quesos El Higaldo Manzanares FS",
+      "away": "FC Barcelona",
+      "comp": 2758,
+      "fs": "2ZKEc0p2"
+    },
+    {
+      "id": 31820,
+      "ko": "2026-11-28T15:00",
+      "home": "SC Braga",
+      "away": "Portimonense SC",
+      "comp": 1213,
+      "fs": "6wbYgaHj"
+    },
+    {
+      "id": 58004,
+      "ko": "2026-11-28T15:00",
+      "home": "GCR Nun’Álvares",
+      "away": "Atlético Clube de Portugal",
+      "comp": 1923,
+      "fs": "xCVL1Fje"
+    },
+    {
+      "id": 58005,
+      "ko": "2026-11-28T15:00",
+      "home": "SCU Torreense",
+      "away": "Santa Luzia FC",
+      "comp": 1923,
+      "fs": "EBFgGE5l"
+    },
+    {
+      "id": 58006,
+      "ko": "2026-11-28T15:00",
+      "home": "Novasemente/Cavalinho",
+      "away": "Maia Futsal/Mercainox",
+      "comp": 1923,
+      "fs": "r9YTagL7"
+    },
+    {
+      "id": 58007,
+      "ko": "2026-11-28T15:00",
+      "home": "SL Benfica",
+      "away": "GD Árvore",
+      "comp": 1923,
+      "fs": "z3LFNdDE"
+    },
+    {
+      "id": 58008,
+      "ko": "2026-11-28T15:00",
+      "home": "Leões de Porto Salvo",
+      "away": "Futsal Feijó/Metaseguros",
+      "comp": 1923,
+      "fs": "rTONLzrR"
+    },
+    {
+      "id": 63490,
+      "ko": "2026-11-28T16:00",
+      "home": "ElPozo Murcia",
+      "away": "Sur Seeds El Ejido Futsal",
+      "comp": 2758,
+      "fs": "63FoCaae"
+    },
+    {
+      "id": 63491,
+      "ko": "2026-11-28T17:45",
+      "home": "Peñíscola FS",
+      "away": "Jimbee Cartagena FS",
+      "comp": 2758,
+      "fs": "Yy2vELUr"
+    },
+    {
+      "id": 31821,
+      "ko": "2026-11-28T19:30",
+      "home": "Eléctrico FC",
+      "away": "SL Benfica",
+      "comp": 1213,
+      "fs": "YqjKH29c"
+    },
+    {
+      "id": 63492,
+      "ko": "2026-11-28T19:30",
+      "home": "O Parrulo Ferrol",
+      "away": "Córdoba Patrimonio",
+      "comp": 2758,
+      "fs": "x6G8Js7L"
+    },
+    {
+      "id": 63494,
+      "ko": "2026-11-28T19:30",
+      "home": "Jaén Paraíso Interior",
+      "away": "Wanapix AD Sala 10 Zaragoza",
+      "comp": 2758,
+      "fs": "ULM6aMFk"
+    },
+    {
+      "id": 31824,
+      "ko": "2026-11-28T21:15",
+      "home": "Sporting CP",
+      "away": "SCU Torreense",
+      "comp": 1213,
+      "fs": "Odw68bWq"
     }
   ]
 }
